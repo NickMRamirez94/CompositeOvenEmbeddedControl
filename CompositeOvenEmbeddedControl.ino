@@ -1,8 +1,7 @@
 //#include <SerialFlash.h>
-#include <SPI.h>
+//#include <SPI.h>
 #include <SD.h>
-#include <cmath>
-//#include "OvenFileList.h"
+
 #define GLCD   8
 
 //Set buttons to arduino input pins
@@ -11,11 +10,12 @@
 #define B_ENTER   7
 #define B_BACK    4
 #define LED       2
+#define BUFFERSIZE 20
 
 byte prevMenu = 1;
-int pageNumber = 1;
-int totalCycles = 0;
-int totalData = 0;
+byte pageNumber = 1;
+byte totalCycles = 0;
+byte totalData = 0;
 byte indexMain = 1;
 byte indexCC = 0;
 byte indexCCO = 1;
@@ -33,11 +33,11 @@ bool lastButton_back = LOW;
 bool currentButton_back = LOW;
 bool ledState = LOW;
 
-File cycleDir;
-File dataDir;
+// File cycleDir;
+// File dataDir;
 
 void setup() {
-  Serial.begin(115200, SERIAL_7N1);
+  Serial.begin(9600, SERIAL_8N1);
   
   pinMode(GLCD, OUTPUT);
   pinMode(LED, OUTPUT);
@@ -56,7 +56,7 @@ void setup() {
     while(1);
   }
   //Count number of cure cycles on SD Card
-  cycleDir = SD.open("/cycles");
+  File cycleDir = SD.open("/cycles");
   if(!cycleDir) { lcdPrint(0, 0, "Can't open cycles folder"); while(1); }
   //Count Total Files
   while(1) {
@@ -65,10 +65,10 @@ void setup() {
     totalCycles++;
     entry.close();
   }
-  cycleDir.rewindDirectory();
+  cycleDir.close();
 
   //Count number of data logs on SD Card
-  dataDir = SD.open("/data");
+  File dataDir = SD.open("/data");
   if(!dataDir) { lcdPrint(0, 0, "Can't open data folder"); while(1); }
   //Count Total Files
   while(1) {
@@ -77,7 +77,7 @@ void setup() {
     totalData++;
     entry.close();
   }
-  dataDir.rewindDirectory();
+  dataDir.close();
 
   //delay(1000);
   lcdClear();
@@ -165,7 +165,7 @@ void cureCycles() {
   
   lcdClear();
 
-  cycleDir.rewindDirectory();
+  File cycleDir = SD.open("/cycles");
   if (totalCycles != 0) {
     for (int k = 0; k < (pageNumber - 1) * 8; k++) {
       File entry = cycleDir.openNextFile();
@@ -272,6 +272,7 @@ void cureCycles() {
     delay(2000);
     prevMenu = 1;
   }
+  cycleDir.close();
 }
 
 void cureCycleOptions(String name) {
@@ -387,16 +388,90 @@ void dataLog() {
 }
 
 void upload() {
+  String dirC = "/cycles/";
+  String ext = ".mit";
+  String name = "";
+  String fullPath;
+  char title[20];
+  byte buffer[BUFFERSIZE];
+  int data;
+  unsigned int ticker = 0;
+  bool toggle = LOW;
+  File dataFile;
+  File tempFile;
   lcdClear();
-  lcdPrint(0, 0, "Upload  Menu");
+  lcdPrint(4, 2, "Ready to receive file...");
   while(!digitalRead(B_ENTER));
-  while(1) {
-    currentButton_enter = digitalRead(B_ENTER); //read button state
-    if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
+  if(SD.exists("/temp/temp")) { SD.remove("/temp/temp"); }
+  tempFile = SD.open("/temp/temp", FILE_WRITE);
+   while(1) {
+    if(Serial.available() > 0) {
+      lcdPrint(4, 3, "Receiving Data...");
+
+      unsigned int ticker = 0;
+      bool toggle = LOW;
+      while ((data = Serial.readBytes(buffer, BUFFERSIZE)) > 0) {
+        tempFile.write(buffer, data);
+        ticker++;
+        if((ticker % 25) == 0)
+          toggle = !toggle;
+        digitalWrite(LED, toggle);
+      }
+      digitalWrite(LED, LOW);
+
+      tempFile.seek(0);
+      tempFile.read(title, 20);
+      int count = 0;
+      int digits = 0;
+      while (count < 8) {
+        if((title[digits] > 47 && title[digits] < 58)
+           || (title[digits] > 64 && title[digits] < 91)
+           || (title[digits] > 96 && title[digits] < 123)) {
+          name += title[digits];
+          count++;
+         }        
+         digits++;
+      }
+
+      name += ext;
+      fullPath = dirC + name;
+      if(SD.exists(fullPath)) {
+        lcdPrint(4, 5, "File Exists.");
+        lcdPrint(4, 6, "Overwrite?");
+        while(1);
+      }
+
+      lcdPrint(4, 4, "Saving: ");
+      lcdPrint(0, 5, dirC + name);
+      //while(1);
+      dataFile = SD.open(dirC + name, FILE_WRITE);
+      tempFile.seek(0);
+      
+      ticker = 0;
+      while ((data = tempFile.read(buffer, BUFFERSIZE)) > 0) {
+        dataFile.write(buffer, data);
+        ticker++;
+        if((ticker % 15) == 0)
+          toggle = !toggle;
+        digitalWrite(LED, toggle);
+      }
+      digitalWrite(LED, LOW);
+
+      dataFile.close();
+      tempFile.close();
+
+      SD.remove("/temp/temp");
+      totalCycles++;
+      delay(1000);
+      break;
+    }
+
+    currentButton_back = digitalRead(B_BACK); //read button state
+    if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
     {
       break;
     }
-    lastButton_enter = currentButton_enter; //reset button value
+    lastButton_back = currentButton_back; //reset button value
   }
 }
 
@@ -406,6 +481,7 @@ void viewCycle(){
   int row = 0;
   //int col = 0;
   int lineNum = 1;
+  bool leave = LOW;
   char myChar;
   lcdClear();
   String dir = "/cycles/";
@@ -424,19 +500,28 @@ void viewCycle(){
       row++;
       lineNum++;
     }
-    lcdPrint(17, 7, "Enter");
+    lcdPrint(19, 7, "Down");
     while(!digitalRead(B_DOWN));
     while(1) {
-    currentButton_down = digitalRead(B_DOWN); //read button state
+      currentButton_down = digitalRead(B_DOWN); //read button state
       if (lastButton_down == HIGH && currentButton_down == LOW) //if it was pressed…
       {
         break;
       }
       lastButton_down = currentButton_down; //reset button value
+
+      currentButton_back = digitalRead(B_BACK); //read button state
+      if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+      {
+        leave = HIGH;
+        break;
+      }
+      lastButton_back = currentButton_back; //reset button value
     }
-  
+    
     lcdClear();
     row = 0;
+    if (leave) { break; }
   }
 }
 
@@ -479,13 +564,13 @@ void lcdPrint(byte x, byte y, String message) {
    Serial.write(y);
    Serial.write(1);
    Serial.println(message);
-   delay(10);
+   //delay(10);
    //digitalWrite(GLCD, HIGH);
 }
 
 void lcdClear() {
   digitalWrite(GLCD, LOW);
   Serial.write(3);
-  delay(10);
+  //delay(10);
   //digitalWrite(GLCD, HIGH);
 }
