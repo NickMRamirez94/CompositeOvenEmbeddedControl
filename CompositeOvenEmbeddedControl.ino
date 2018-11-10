@@ -21,6 +21,7 @@ byte indexCC = 0;
 byte indexCCO = 1;
 byte indexData = 1;
 String currentFile;
+String currentName;
 
 //Button state flags. Used for detecting button presses.
 bool lastButton_up = LOW;
@@ -93,7 +94,7 @@ void loop() {
       cureCycles();
       break;
     case (3):
-      cureCycleOptions(currentFile);
+      cureCycleOptions();
       break;
     case (4):
       dataLog();
@@ -162,6 +163,7 @@ void mainMenu() {
 void cureCycles() {
   
   int row = 0;
+  char title[20];
   
   lcdClear();
 
@@ -175,7 +177,8 @@ void cureCycles() {
     for (int i = 0; i < 8; i++) {
         File entry = cycleDir.openNextFile();
         if(!entry) { break; }
-        lcdPrint(2, row, entry.name());
+        entry.read(title, 20);
+        lcdPrint(2, row, title);
         row++;
         entry.close();
       }
@@ -249,6 +252,8 @@ void cureCycles() {
         for (int i = 0; i < indexCC + 1; i++) {
             File entry = cycleDir.openNextFile();
             if(!entry) { break; }
+            entry.read(title, 20);
+            currentName = title;
             currentFile = entry.name();
             row++;
             entry.close();
@@ -275,10 +280,9 @@ void cureCycles() {
   cycleDir.close();
 }
 
-void cureCycleOptions(String name) {
-  currentFile = name;
+void cureCycleOptions() {
   lcdClear();
-  lcdPrint(((25 - name.length()) / 2), 0, name);
+  lcdPrint(2, 0, currentName);
   lcdPrint(2, 2, "Run  Cycle");
   lcdPrint(2, 3, "View  Cycle  Instructions");
   lcdPrint(2, 4, "Delete  Cycle");
@@ -395,8 +399,6 @@ void upload() {
   char title[20];
   byte buffer[BUFFERSIZE];
   int data;
-  unsigned int ticker = 0;
-  bool toggle = LOW;
   File dataFile;
   File tempFile;
   lcdClear();
@@ -479,28 +481,35 @@ void runCycle(){}
 
 void viewCycle(){
   int row = 0;
-  //int col = 0;
   int lineNum = 1;
   bool leave = LOW;
-  char myChar;
   lcdClear();
   String dir = "/cycles/";
   String file = dir + currentFile;
   File cycle = SD.open(file, FILE_READ);
   if (!cycle) { Serial.write("Can't open file"); }
-  
+  cycle.seek(20);
   while (cycle.available()) {
     while (row != 8 && cycle.available()) {  
-      String line = "";
-      do {
-        myChar = cycle.read();
-        line += myChar;
-      } while(myChar != 10 && cycle.available());
+      String line;
+      byte buff[5];
+      cycle.read(buff, 5);
+      uint16_t rate, temp;
+      rate = ((uint16_t)buff[1] << 8) | (uint16_t)buff[2];
+      temp = ((uint16_t)buff[3] << 8) | (uint16_t)buff[4];
+      if(buff[0] == 72) {
+        line = "Hold for " + String(rate) + " min";
+      } else if (buff[0] == 82) {
+        line = "Ramp to " + String(rate) + " at " + String(temp);
+      } else {
+        line = "Deramp to " + String(rate) + " at " + String(temp);
+      }
+      
       lcdPrint(0, row, String(lineNum) + ". " + line);
       row++;
       lineNum++;
     }
-    lcdPrint(19, 7, "Down");
+    lcdPrint(21, 7, "Down");
     while(!digitalRead(B_DOWN));
     while(1) {
       currentButton_down = digitalRead(B_DOWN); //read button state
