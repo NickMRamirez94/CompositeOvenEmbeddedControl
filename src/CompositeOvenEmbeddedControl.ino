@@ -12,12 +12,14 @@
 //Misc global variables
 byte prevMenu = 1;
 byte pageNumber = 1;
+byte pageNumber2 = 1;
 byte totalCycles = 0;
 byte totalData = 0;
 byte indexMain = 2;
 byte indexCC = 0;
-byte indexCCO = 1;
-byte indexData = 1;
+byte indexCCO = 2;
+byte indexData = 0;
+byte indexDLO = 2;
 String currentFile;
 String currentName;
 
@@ -30,13 +32,16 @@ bool lastButton_down = LOW;
 bool currentButton_down = LOW;
 bool lastButton_back = LOW;
 bool currentButton_back = LOW;
-bool ledState = LOW;
 
 //Function declarations
 void mainMenu();
 void dataLog();
 void cureCycles();
 void cureCycleOptions();
+void dataLogOptions();
+void downloadData();
+void deleteData();
+void serialFlush();
 
 void setup() {
   Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
@@ -152,6 +157,9 @@ void setup() {
       break;
     case (4):
       dataLog();
+      break;
+    case (5):
+      dataLogOptions();
       break;
     default:
       mainMenu();  
@@ -332,7 +340,8 @@ void cureCycles() {
             File entry = cycleDir.openNextFile();
             if(!entry) { break; }
             entry.read(title, 20);
-            currentName = title;
+            String str(title);
+            currentName = str;
             currentFile = entry.name();
             row++;
             entry.close();
@@ -372,8 +381,7 @@ void cureCycleOptions() {
   GLCD.CursorTo(2, 4);
   GLCD.print("Delete  Cycle");
   
-  GLCD.CursorTo(0, indexCCO + 1);
-  GLCD.CursorTo(0, indexCCO + 1);
+  GLCD.CursorTo(0, indexCCO);
   GLCD.print("->"); //Initial Location
   prevMenu = 3;
   
@@ -385,10 +393,10 @@ void cureCycleOptions() {
     currentButton_up = digitalRead(B_UP); //read button state
     if (lastButton_up == HIGH && currentButton_up == LOW) //if it was pressed…
     {
-      if(indexCCO != 1) {
-        GLCD.CursorTo(0, indexCCO + 1);
-        GLCD.print("   ");
+      if(indexCCO != 2) {
         GLCD.CursorTo(0, indexCCO);
+        GLCD.print("   ");
+        GLCD.CursorTo(0, indexCCO - 1);
         GLCD.print("->");
         --indexCCO;
       }
@@ -398,10 +406,10 @@ void cureCycleOptions() {
     currentButton_down = digitalRead(B_DOWN); //read button state
     if (lastButton_down == HIGH && currentButton_down == LOW) //if it was pressed…
     {
-      if(indexCCO != 3) {
-        GLCD.CursorTo(0, indexCCO + 1);
+      if(indexCCO != 4) {
+        GLCD.CursorTo(0, indexCCO);
         GLCD.print("   ");
-        GLCD.CursorTo(0, indexCCO + 2);
+        GLCD.CursorTo(0, indexCCO + 1);
         GLCD.print("->");
         ++indexCCO;
       }
@@ -411,7 +419,7 @@ void cureCycleOptions() {
     currentButton_enter = digitalRead(B_ENTER); //read button state
     if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
     {
-      switch(indexCCO) {
+      switch(indexCCO - 1) {
         case(1):
           runCycle();
           break;
@@ -437,29 +445,170 @@ void cureCycleOptions() {
 }
 
 void dataLog() {
-  GLCD.ClearScreen();
-  GLCD.CursorTo(5, 0);
-  GLCD.print("Data  Logs");
-  //List of logs
-  GLCD.CursorTo(2, 2);
-  GLCD.print("Back");
   
-  GLCD.CursorTo(0, indexData + 1);
+  int row = 0;
+  char title[20];
+  
+  GLCD.ClearScreen();
+
+  File cycleDir = SD.open("/data");
+  if (totalData != 0) {
+    //This loop cycles through the files on previous pages so that the current page can be displayed
+    for (int k = 0; k < (pageNumber2 - 1) * 8; k++) {
+      File entry = cycleDir.openNextFile();
+      if(!entry) { break; }
+      entry.close();
+    }
+    for (int i = 0; i < 8; i++) {
+        File entry = cycleDir.openNextFile();
+        if(!entry) { break; }
+        entry.read(title, 20);
+        GLCD.CursorTo(2, row);
+        String str(title);
+        GLCD.print(str);
+        row++;
+        entry.close();
+      }
+
+    cycleDir.rewindDirectory();
+    if(pageNumber2 == (((totalData - 1) / 8) + 1) && (indexData + 1) > (totalData % 8)) { //For if you delete the last file in the list
+      GLCD.CursorTo(0, indexData - 1);
+      GLCD.print("->"); //Initial Location
+      indexData--;  
+    } else {
+      GLCD.CursorTo(0, indexData);
+      GLCD.print("->"); //Initial Location
+    }
+    prevMenu = 2;
+    
+    while(!digitalRead(B_ENTER));
+    while(!digitalRead(B_BACK));
+    delay(50);
+    while(1) {
+      currentButton_up = digitalRead(B_UP); //read button state
+      if (lastButton_up == HIGH && currentButton_up == LOW) //if it was pressed…
+      {
+        if(pageNumber2 == 1) { //if in first page
+          if(indexData != 0) { //if not the first entry
+            GLCD.CursorTo(0, indexData);
+            GLCD.print("   ");
+            GLCD.CursorTo(0, indexData - 1);
+            GLCD.print("->");
+            --indexData;
+          }
+        } else { //if not in first page
+        if(indexData != 0) {
+          GLCD.CursorTo(0, indexData);
+          GLCD.print("   ");
+          GLCD.CursorTo(0, indexData - 1);
+          GLCD.print("->");
+          --indexData;
+          } else {
+          --pageNumber2;
+          indexData = 7;
+          break;
+          }
+        }
+      }
+      lastButton_up = currentButton_up; //reset button value
+
+      currentButton_down = digitalRead(B_DOWN); //read button state
+      if (lastButton_down == HIGH && currentButton_down == LOW) //if it was pressed…
+      {
+        if(pageNumber2 == ((totalData - 1) / 8) + 1) { //if in last page
+          if(indexData != (totalData - 1) % 8) { //if not the last entry
+            GLCD.CursorTo(0, indexData);
+            GLCD.print("   ");
+            GLCD.CursorTo(0, indexData + 1);
+            GLCD.print("->");
+            ++indexData;
+          }
+        } else { //if not in last page
+        if(indexData != 7) {
+          GLCD.CursorTo(0, indexData);
+          GLCD.print("   ");
+          GLCD.CursorTo(0, indexData + 1);
+          GLCD.print("->");
+          ++indexData;
+          } else {
+          ++pageNumber2;
+          indexData = 0;
+          break;
+          }
+        }
+      }
+      lastButton_down = currentButton_down; //reset button value
+
+      currentButton_enter = digitalRead(B_ENTER); //read button state
+      if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
+      {
+        //This loop cycles through the files on previous pages
+        for (int k = 0; k < (pageNumber2 - 1) * 8; k++) {
+          File entry = cycleDir.openNextFile();
+          if(!entry) { break; }
+          entry.close();
+        }
+        for (int i = 0; i < indexData + 1; i++) {
+            File entry = cycleDir.openNextFile();
+            if(!entry) { break; }
+            entry.read(title, 20);
+            String str(title);
+            currentName = str;
+            currentFile = entry.name();
+            row++;
+            entry.close();
+          }
+        prevMenu = 5;
+        break;
+      }
+      lastButton_enter = currentButton_enter; //reset button value
+
+      currentButton_back = digitalRead(B_BACK); //read button state
+      if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+      {
+        prevMenu = 1;
+        break;
+      }
+      lastButton_back = currentButton_back; //reset button value
+    }
+  } else {
+    GLCD.CursorTo(0, 0);
+    GLCD.print("There are no data files on");
+    GLCD.CursorTo(0, 1);
+    GLCD.print("the SD Card.");
+    delay(2000);
+    prevMenu = 1;
+  }
+  cycleDir.close();
+}
+
+void dataLogOptions() {
+  GLCD.ClearScreen();
+  GLCD.CursorTo(2, 0);
+  GLCD.print(currentName);
+  GLCD.CursorTo(2, 2);
+  GLCD.print("Download Data");
+  GLCD.CursorTo(2, 3);
+  GLCD.print("Delete Data");
+
+  GLCD.CursorTo(0, indexDLO);
   GLCD.print("->"); //Initial Location
-  prevMenu = 4;
   
   while(!digitalRead(B_ENTER));
+  while(!digitalRead(B_DOWN));
+  while(!digitalRead(B_BACK));
   delay(50);
+
   while(1) {
     currentButton_up = digitalRead(B_UP); //read button state
     if (lastButton_up == HIGH && currentButton_up == LOW) //if it was pressed…
     {
-      if(indexData != 1) {
-        GLCD.CursorTo(0, indexData + 1);
+      if(indexDLO != 2) {
+        GLCD.CursorTo(0, indexDLO);
         GLCD.print("   ");
-        GLCD.CursorTo(0, indexData);
+        GLCD.CursorTo(0, indexDLO - 1);
         GLCD.print("->");
-        --indexData;
+        --indexDLO;
       }
     }
     lastButton_up = currentButton_up; //reset button value
@@ -467,12 +616,12 @@ void dataLog() {
     currentButton_down = digitalRead(B_DOWN); //read button state
     if (lastButton_down == HIGH && currentButton_down == LOW) //if it was pressed…
     {
-      if(indexData != 1) {
-        GLCD.CursorTo(0, indexData + 1);
+      if(indexDLO != 3) {
+        GLCD.CursorTo(0, indexDLO);
         GLCD.print("   ");
-        GLCD.CursorTo(0, indexData + 2);
+        GLCD.CursorTo(0, indexDLO + 1);
         GLCD.print("->");
-        ++indexData;
+        ++indexDLO;
       }
     }
     lastButton_down = currentButton_down; //reset button value
@@ -480,14 +629,103 @@ void dataLog() {
     currentButton_enter = digitalRead(B_ENTER); //read button state
     if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
     {
-      switch(indexData) {
-        default:
-          prevMenu = 1;
+      switch(indexDLO - 1) {
+        case(1):
+          downloadData();
+          break;
+        case(2):
+          deleteData();
           break;
       }
       break;
     }
     lastButton_enter = currentButton_enter; //reset button value
+
+    currentButton_back = digitalRead(B_BACK); //read button state
+    if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+    {
+      prevMenu = 4;
+      break;
+    }
+    lastButton_back = currentButton_back; //reset button value
+  }
+}
+
+void downloadData() {
+  String dirD = "/data/";
+  String name = "";
+  int data;
+  byte buffer[BUFFERSIZE];
+  GLCD.ClearScreen();
+  GLCD.CursorTo(6, 0);
+  GLCD.print("Download Data");
+  GLCD.CursorTo(1, 2);
+  GLCD.print("Press enter when ready");
+  GLCD.CursorTo(1, 3);
+  GLCD.print("to send");
+
+  while(!digitalRead(B_ENTER));
+  delay(100);
+  while(1) {
+    currentButton_enter = digitalRead(B_ENTER); //read button state
+    if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
+    {
+      GLCD.CursorTo(1, 5);
+      GLCD.print("Sending...");
+      name = dirD + currentFile;
+      File dataFile = SD.open(name);
+      while((data = dataFile.read(buffer, BUFFERSIZE)) > 0)
+        Serial.write(buffer, data);
+      GLCD.CursorTo(1, 6);
+      GLCD.print("Transfer complete");
+      dataFile.close();
+      delay(2000);
+      break;
+    }
+    lastButton_enter = currentButton_enter; //reset button value
+
+    currentButton_back = digitalRead(B_BACK); //read button state
+    if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+    {
+      break;
+    }
+    lastButton_back = currentButton_back; //reset button value
+  }
+
+  prevMenu = 5;  
+}
+
+void deleteData() {
+  GLCD.ClearScreen();
+  GLCD.CursorTo(0, 3);
+  GLCD.print("Are you sure you want");
+  GLCD.CursorTo(0, 4);
+  GLCD.print("to delete " + currentFile + "?");
+  while(!digitalRead(B_ENTER));
+  delay(50);
+  while(1) {
+    currentButton_back = digitalRead(B_BACK); //read button state
+    if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+    {
+      prevMenu = 5;
+      break;
+    }
+    lastButton_back = currentButton_back; //reset button value
+
+    currentButton_enter = digitalRead(B_ENTER); //read button state
+    if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
+    {
+      SD.remove("/data/" + currentFile);
+      totalData--;
+      prevMenu = 4;
+      if(indexData == 0 && pageNumber2 > 1 && totalData % 8 == 0) {
+        indexData = 8;
+        pageNumber2--;
+      }
+      break;
+    }
+    lastButton_enter = currentButton_enter; //reset button value
+
   }
 }
 
@@ -496,11 +734,13 @@ void upload() {
   String ext = ".mit";
   String name = "";
   String fullPath;
+  bool isNoOverWrite = false;
   char title[20];
   byte buffer[BUFFERSIZE];
   int data;
   File dataFile;
   File tempFile;
+  serialFlush();
   GLCD.ClearScreen();
   GLCD.CursorTo(4, 2);
   GLCD.print("Ready to receive file...");
@@ -513,8 +753,6 @@ void upload() {
       GLCD.CursorTo(4, 3);
       GLCD.print("Receiving Data...");
 
-      unsigned int ticker = 0;
-      bool toggle = LOW;
       while ((data = Serial.readBytes(buffer, BUFFERSIZE)) > 0) {
         tempFile.write(buffer, data);
       }
@@ -535,38 +773,63 @@ void upload() {
 
       name += ext;
       fullPath = dirC + name;
+
+      //This if-statement checks if the file exists
       if(SD.exists(fullPath)) {
         GLCD.CursorTo(4, 5);
         GLCD.print("File Exists.");
         GLCD.CursorTo(4, 6);
         GLCD.print("Overwrite?");
-        while(1);
+        GLCD.CursorTo(4, 7);
+        GLCD.print("Enter=Y  Back=N");
+        
+        while(1) {
+          currentButton_enter = digitalRead(B_ENTER); //read button state
+          if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
+          {
+            SD.remove(fullPath);
+            break;
+          }
+          lastButton_enter = currentButton_enter; //reset button value
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+          {
+            isNoOverWrite = true;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
+        }
       }
 
-      GLCD.CursorTo(4, 4);
-      GLCD.print("Saving: ");
-      GLCD.CursorTo(0, 5);
-      GLCD.print(dirC + name);
-      //while(1);
-      dataFile = SD.open(dirC + name, FILE_WRITE);
-      tempFile.seek(0);
-      
-      ticker = 0;
-      while ((data = tempFile.read(buffer, BUFFERSIZE)) > 0) {
-        dataFile.write(buffer, data);
-        ticker++;
-        if((ticker % 15) == 0)
-          toggle = !toggle;
-        digitalWrite(LED, toggle);
+      if(!isNoOverWrite) { 
+          GLCD.CursorTo(4, 4);
+          GLCD.print("Saving...");
+          GLCD.CursorTo(0, 5);
+          GLCD.println("");
+          GLCD.CursorTo(0, 6);
+          GLCD.println("");
+          GLCD.CursorTo(0, 7);
+          GLCD.println("");          
+          GLCD.CursorTo(4, 5);
+          GLCD.print("Filename:");
+          GLCD.CursorTo(4, 6);
+          GLCD.print(name);
+
+          dataFile = SD.open(dirC + name, FILE_WRITE);
+          tempFile.seek(0);
+
+          while((data = tempFile.read(buffer, BUFFERSIZE)) > 0)
+            dataFile.write(buffer, data);
+          
+          dataFile.close();
+          tempFile.close();
+          totalCycles++;
+
+          SD.remove("/temp/temp");
+
+          delay(3000);
       }
-      digitalWrite(LED, LOW);
-
-      dataFile.close();
-      tempFile.close();
-
-      SD.remove("/temp/temp");
-      totalCycles++;
-      delay(1000);
       break;
     }
 
@@ -671,4 +934,9 @@ void deleteCycle() {
 
   }
 
+}
+
+void serialFlush() {
+  while(Serial.available() > 0)
+    char f = Serial.read();
 }
