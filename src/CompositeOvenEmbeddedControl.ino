@@ -2,12 +2,19 @@
  #include <SD.h>
  #include <openGLCD.h>
 
-//Set buttons to arduino input pins
-#define B_UP      11
-#define B_DOWN    12
-#define B_ENTER   13
-#define B_BACK    14
-#define BUFFERSIZE 64
+//Define static variables
+#define B_UP          11
+#define B_DOWN        12
+#define B_ENTER       13
+#define B_BACK        14
+#define BUFFERSIZE    64
+#define RELAY1        0
+#define RELAY2        1
+#define PART_SENSOR1  A4
+#define PART_SENSOR2  A5
+#define AIR_SENSOR1   A6
+#define AIR_SENSOR2   A7
+#define DELTA_T       100
 
 //Misc global variables
 byte prevMenu = 1;
@@ -33,16 +40,6 @@ bool currentButton_down = LOW;
 bool lastButton_back = LOW;
 bool currentButton_back = LOW;
 
-//Function declarations
-void mainMenu();
-void dataLog();
-void cureCycles();
-void cureCycleOptions();
-void dataLogOptions();
-void downloadData();
-void deleteData();
-void serialFlush();
-
 void setup() {
   Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
   
@@ -52,6 +49,9 @@ void setup() {
   pinMode(B_ENTER, INPUT_PULLUP);
   pinMode(B_BACK, INPUT_PULLUP);
   pinMode(SS, OUTPUT);
+  //Initialize with oven heating elements off
+  digitalWrite(RELAY1, LOW);
+  digitalWrite(RELAY2, LOW);
   
   //Print Title Screen
   GLCD.Init();
@@ -587,9 +587,9 @@ void dataLogOptions() {
   GLCD.CursorTo(2, 0);
   GLCD.print(currentName);
   GLCD.CursorTo(2, 2);
-  GLCD.print("Download Data");
+  GLCD.print("Download  Data");
   GLCD.CursorTo(2, 3);
-  GLCD.print("Delete Data");
+  GLCD.print("Delete  Data");
 
   GLCD.CursorTo(0, indexDLO);
   GLCD.print("->"); //Initial Location
@@ -696,6 +696,7 @@ void downloadData() {
 }
 
 void deleteData() {
+  String dataFile;
   GLCD.ClearScreen();
   GLCD.CursorTo(0, 3);
   GLCD.print("Are you sure you want");
@@ -715,7 +716,8 @@ void deleteData() {
     currentButton_enter = digitalRead(B_ENTER); //read button state
     if (lastButton_enter == HIGH && currentButton_enter == LOW) //if it was pressed…
     {
-      SD.remove("/data/" + currentFile);
+      dataFile = "/data/" + currentFile;
+      SD.remove(dataFile);
       totalData--;
       prevMenu = 4;
       if(indexData == 0 && pageNumber2 > 1 && totalData % 8 == 0) {
@@ -842,8 +844,6 @@ void upload() {
   }
 }
 
-void runCycle(){}
-
 void viewCycle(){
   int row = 0;
   int lineNum = 1;
@@ -865,9 +865,9 @@ void viewCycle(){
       if(buff[0] == 72) {
         line = "Hold for " + String(rate) + " min";
       } else if (buff[0] == 82) {
-        line = "Ramp to " + String(rate) + " at " + String(temp);
+        line = "Ramp to " + String(temp) + " at " + String(rate);
       } else {
-        line = "Deramp to " + String(rate) + " at " + String(temp);
+        line = "Deramp to " + String(temp) + " at " + String(rate);
       }
       
       GLCD.CursorTo(0, row);
@@ -936,7 +936,255 @@ void deleteCycle() {
 
 }
 
+void runCycle(){
+  GLCD.ClearScreen();
+  String dirC = "/cycles/";
+  String dirD = "/data/";
+  String ext = ".dat";
+  String cycleFile = dirC + currentFile;
+  String dataFileName;
+  String name = "";
+  String airDisplay;
+  String partDisplay;
+  uint16_t holdTemp;
+  int data;
+  char title[20];
+  byte buffer[5];
+  uint16_t rate, temp;
+  File cycle = SD.open(cycleFile, FILE_READ);
+  if (!cycle) { Serial.write("Can't open file"); }
+  cycle.read(title, 20);
+  //Get the title and save it to new data file
+  int count = 0;
+  int digits = 0;
+  while (count < 8) {
+    if((title[digits] > 47 && title[digits] < 58)
+        || (title[digits] > 64 && title[digits] < 91)
+        || (title[digits] > 96 && title[digits] < 123)) {
+      name += title[digits];
+      count++;
+      }        
+      digits++;
+  }
+  name += ext;
+  dataFileName = dirD + name;
+
+  if(SD.exists(dataFileName))
+    SD.remove(dataFileName);
+  
+  File dataFile = SD.open(dataFileName, FILE_WRITE);
+  dataFile.write(title, 20);
+  totalData++;
+
+  //Generate Cycle Screen
+  GLCD.CursorTo(0, 0);
+  GLCD.print("Relay  1: ");
+  GLCD.CursorTo(0, 1);
+  GLCD.print("Relay  2: ");
+  GLCD.CursorTo(0, 3);
+  GLCD.print("Ambient  Temp: ");
+  GLCD.CursorTo(0, 4);
+  GLCD.print("Part Temp: ");
+  GLCD.CursorTo(0, 6);
+  GLCD.print("Current  Instruction: ");
+  //Start of cycle
+  unsigned long startTime = millis();
+  while(data = cycle.read(buffer, 5) > 0) {
+    //Convert rate and temp bytes to variables
+    rate = ((uint16_t)buffer[1] << 8) | (uint16_t)buffer[2];
+    temp = ((uint16_t)buffer[3] << 8) | (uint16_t)buffer[4];
+    
+    //Ramp code
+    if(buffer[0] == 82) {
+      uint16_t currentTemp;
+      bool isOn;
+      unsigned long rampStart = millis();
+      holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
+      GLCD.CursorTo(0, 7);
+      GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
+      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+        unsigned long time = millis();
+        currentTemp = tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2));
+        while(millis() < time + 60000) {
+          if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= currentTemp + rate) ||
+             (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T)) {
+            digitalWrite(RELAY1, LOW);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off");
+            digitalWrite(RELAY2, LOW);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off");
+            isOn = false;
+          } else if(((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < currentTemp + rate) && 
+                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= currentTemp + rate - 2) &&
+                    isOn == false) ||
+                    ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) < currentTemp + rate + DELTA_T) && 
+                    (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T - 2) &&
+                    isOn == false)){
+            digitalWrite(RELAY1, LOW);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off");
+            digitalWrite(RELAY2, LOW);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off");
+            isOn = false;
+          } else {            
+            digitalWrite(RELAY1, HIGH);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            digitalWrite(RELAY2, HIGH);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            isOn = true;
+          }
+
+          GLCD.CursorTo(13, 3);
+          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.CursorTo(10, 4);
+          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.CursorTo(17, 0);
+          if((millis() - startTime) / 3600000 < 10)
+            GLCD.print("0");
+          GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          if(((millis() - startTime) / 60000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          if(((millis() - startTime) / 1000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+        }        
+      }      
+    } else if(buffer[0] == 72) {
+      bool isOn;
+      unsigned long time = millis();
+      GLCD.CursorTo(0, 7);
+      GLCD.print("Hold for " + String(rate) + " minutes    ");
+      while(millis() - time < (unsigned long)(rate * 60000)) {
+        if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp)) {
+            digitalWrite(RELAY1, LOW);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off");
+            digitalWrite(RELAY2, LOW);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off");
+            isOn = false;
+          } else if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < holdTemp + rate) && 
+                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp + rate - 2) &&
+                    isOn == false){
+            digitalWrite(RELAY1, LOW);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off");
+            digitalWrite(RELAY2, LOW);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off");
+            isOn = false;
+          } else {            
+            digitalWrite(RELAY1, HIGH);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            digitalWrite(RELAY2, HIGH);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            isOn = true;
+          }
+
+          GLCD.CursorTo(13, 3);
+          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.CursorTo(10, 4);
+          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.CursorTo(17, 0);
+          if((millis() - startTime) / 3600000 < 10)
+            GLCD.print("0");
+          GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          if(((millis() - startTime) / 60000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          if(((millis() - startTime) / 1000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+      }
+    } else if(buffer[0] == 68) {
+      uint16_t currentTemp;
+      bool isOn;
+      unsigned long rampStart = millis();
+      holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
+      GLCD.CursorTo(0, 7);
+      GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
+      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+        unsigned long time = millis();
+        currentTemp = tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2));
+        while(millis() < time + 60000) {
+          if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) <= currentTemp - rate) ||
+             (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) <= currentTemp - rate - DELTA_T)) {
+            digitalWrite(RELAY1, HIGH);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            digitalWrite(RELAY2, HIGH);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            isOn = true;
+          } else if(((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > currentTemp - rate) && 
+                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) <= currentTemp - rate + 2) &&
+                    isOn == true) ||
+                    ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) > currentTemp - rate - DELTA_T) && 
+                    (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) <= currentTemp - rate - DELTA_T - 2) &&
+                    isOn == true)){
+            digitalWrite(RELAY1, HIGH);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            digitalWrite(RELAY2, HIGH);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            isOn = true;
+          } else {            
+            digitalWrite(RELAY1, LOW);
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off");
+            digitalWrite(RELAY2, LOW);
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off");
+            isOn = false;
+          }
+
+          GLCD.CursorTo(13, 3);
+          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.CursorTo(10, 4);
+          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.CursorTo(17, 0);
+          if((millis() - startTime) / 3600000 < 10)
+            GLCD.print("0");
+          GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          if(((millis() - startTime) / 60000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          if(((millis() - startTime) / 1000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+        }        
+      }
+    }
+  }
+
+
+  digitalWrite(RELAY1, LOW);
+  digitalWrite(RELAY2, LOW);
+  cycle.close();
+  dataFile.close();
+}
+
 void serialFlush() {
   while(Serial.available() > 0)
-    char f = Serial.read();
+    Serial.read();
 }
+
+uint16_t tempConversion (int data1, int data2) {
+  //Insert code to convert sensor data to a temperature
+  int temp1;
+  int temp2;
+  temp1 = map(data1, 0, 1023, 0, 400);
+  temp2 = map(data2, 0, 1023, 0, 400);
+  return (temp1 + temp2) / 2;
+}
+
+// (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < currentTemp + rate)
+//            && (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) < currentTemp + rate + 100)
