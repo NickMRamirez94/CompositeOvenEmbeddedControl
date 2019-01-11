@@ -947,9 +947,14 @@ void runCycle(){
   String airDisplay;
   String partDisplay;
   uint16_t holdTemp;
+  bool ct = false;
+  bool lt = false;
+  unsigned long chad = 0;
+  bool isExit = false;
   int data;
   char title[20];
   byte buffer[5];
+  byte dataBuffer[8];
   uint16_t rate, temp;
   File cycle = SD.open(cycleFile, FILE_READ);
   if (!cycle) { Serial.write("Can't open file"); }
@@ -1052,8 +1057,38 @@ void runCycle(){
           if(((millis() - startTime) / 1000) % 60 < 10)
             GLCD.print("0");
           GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
-        }        
-      }      
+
+          //Write to SD card every quarter second
+          ct = ((millis() - startTime) / 125) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
+            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
+            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
+            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
+            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
+            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
+            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
+            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataFile.write(dataBuffer, 8);
+          }
+          lt = ct;
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(6, 3);
+            GLCD.print("Cycle Cancelled");
+            delay(3000);
+            isExit = true;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
+        }
+        if(isExit) { break; }        
+      }   
+    //Hold Code
     } else if(buffer[0] == 72) {
       bool isOn;
       unsigned long time = millis();
@@ -1102,15 +1137,45 @@ void runCycle(){
           if(((millis() - startTime) / 1000) % 60 < 10)
             GLCD.print("0");
           GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+
+          //Write to SD card every quarter second
+          ct = ((millis() - startTime) / 125) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
+            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
+            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
+            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
+            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
+            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
+            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
+            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataFile.write(dataBuffer, 8); 
+          }
+          lt = ct;         
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(6, 3);
+            GLCD.print("Cycle Cancelled");
+            delay(3000);
+            isExit = true;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
       }
+      if(isExit) { break; }
+    //Deramp Code
     } else if(buffer[0] == 68) {
       uint16_t currentTemp;
       bool isOn;
-      unsigned long rampStart = millis();
+      unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
-      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2));
         while(millis() < time + 60000) {
@@ -1160,12 +1225,49 @@ void runCycle(){
           if(((millis() - startTime) / 1000) % 60 < 10)
             GLCD.print("0");
           GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
-        }        
+
+          //Write to SD card every quarter second
+          ct = ((millis() - startTime) / 125) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
+            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
+            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
+            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
+            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
+            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
+            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
+            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataFile.write(dataBuffer, 8); 
+          }
+          lt = ct;         
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == HIGH && currentButton_back == LOW) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(6, 3);
+            GLCD.print("Cycle Cancelled");
+            delay(3000);
+            isExit = true;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
+
+        }
+        if (isExit) { break; }    
       }
     }
+
+    if (isExit) { break; }
   }
 
-
+  if(!isExit) {
+    GLCD.ClearScreen();
+    GLCD.CursorTo(6, 3);
+    GLCD.print("Cycle Complete!");
+    delay(3000);
+  }
   digitalWrite(RELAY1, LOW);
   digitalWrite(RELAY2, LOW);
   cycle.close();
@@ -1186,5 +1288,9 @@ uint16_t tempConversion (int data1, int data2) {
   return (temp1 + temp2) / 2;
 }
 
-// (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < currentTemp + rate)
-//            && (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) < currentTemp + rate + 100)
+uint16_t tempConversion (int data1) {
+  //Insert code to convert sensor data to a temperature
+  uint16_t temp;
+  temp = map(data1, 0, 1023, 0, 400);
+  return temp;
+}
