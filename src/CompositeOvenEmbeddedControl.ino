@@ -1266,6 +1266,17 @@ void runCycle(){
     GLCD.ClearScreen();
     GLCD.CursorTo(6, 3);
     GLCD.print("Cycle Complete!");
+    GLCD.CursorTo(4, 4);
+    GLCD.print("Total Time: ");
+    if((millis() - startTime) / 3600000 < 10)
+      GLCD.print("0");
+    GLCD.print(String((millis() - startTime) / 3600000) + ":");
+    if(((millis() - startTime) / 60000) % 60 < 10)
+      GLCD.print("0");
+    GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+    if(((millis() - startTime) / 1000) % 60 < 10)
+      GLCD.print("0");
+    GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
     delay(3000);
   }
   digitalWrite(RELAY1, LOW);
