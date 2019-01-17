@@ -49,9 +49,11 @@ void setup() {
   pinMode(B_ENTER, INPUT_PULLUP);
   pinMode(B_BACK, INPUT_PULLUP);
   pinMode(SS, OUTPUT);
+  pinMode(RELAY1, OUTPUT);
+  pinMode(RELAY2, OUTPUT);
   //Initialize with oven heating elements off
-  digitalWrite(RELAY1, LOW);
-  digitalWrite(RELAY2, LOW);
+  digitalWrite(RELAY1, HIGH);
+  digitalWrite(RELAY2, HIGH);
   
   //Print Title Screen
   GLCD.Init();
@@ -1013,10 +1015,10 @@ void runCycle(){
         while(millis() < time + 60000) {
           if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= currentTemp + rate) ||
              (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T)) {
-            digitalWrite(RELAY1, LOW);
+            digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
-            digitalWrite(RELAY2, LOW);
+            digitalWrite(RELAY2, HIGH);
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
@@ -1026,18 +1028,18 @@ void runCycle(){
                     ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) < currentTemp + rate + DELTA_T) && 
                     (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T - 2) &&
                     isOn == false)){
-            digitalWrite(RELAY1, LOW);
+            digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
-            digitalWrite(RELAY2, LOW);
+            digitalWrite(RELAY2, HIGH);
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
           } else {            
-            digitalWrite(RELAY1, HIGH);
+            digitalWrite(RELAY1, LOW);
             GLCD.CursorTo(7, 0);
             GLCD.print("On  ");
-            digitalWrite(RELAY2, HIGH);
+            digitalWrite(RELAY2, LOW);
             GLCD.CursorTo(7, 1);
             GLCD.print("On  ");
             isOn = true;
@@ -1096,28 +1098,28 @@ void runCycle(){
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       while(millis() - time < (unsigned long)(rate * 60000)) {
         if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp)) {
-            digitalWrite(RELAY1, LOW);
+            digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
-            digitalWrite(RELAY2, LOW);
+            digitalWrite(RELAY2, HIGH);
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
           } else if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < holdTemp + rate) && 
                     (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp + rate - 2) &&
                     isOn == false){
-            digitalWrite(RELAY1, LOW);
+            digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
-            digitalWrite(RELAY2, LOW);
+            digitalWrite(RELAY2, HIGH);
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
           } else {            
-            digitalWrite(RELAY1, HIGH);
+            digitalWrite(RELAY1, LOW);
             GLCD.CursorTo(7, 0);
             GLCD.print("On  ");
-            digitalWrite(RELAY2, HIGH);
+            digitalWrite(RELAY2, LOW);
             GLCD.CursorTo(7, 1);
             GLCD.print("On  ");
             isOn = true;
@@ -1194,18 +1196,18 @@ void runCycle(){
                     ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) > currentTemp - rate - DELTA_T) && 
                     (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) <= currentTemp - rate - DELTA_T - 2) &&
                     isOn == true)){
-            digitalWrite(RELAY1, HIGH);
+            digitalWrite(RELAY1, LOW);
             GLCD.CursorTo(7, 0);
             GLCD.print("On  ");
-            digitalWrite(RELAY2, HIGH);
+            digitalWrite(RELAY2, LOW);
             GLCD.CursorTo(7, 1);
             GLCD.print("On  ");
             isOn = true;
           } else {            
-            digitalWrite(RELAY1, LOW);
+            digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
-            digitalWrite(RELAY2, LOW);
+            digitalWrite(RELAY2, HIGH);
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
@@ -1279,8 +1281,8 @@ void runCycle(){
     GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
     delay(3000);
   }
-  digitalWrite(RELAY1, LOW);
-  digitalWrite(RELAY2, LOW);
+  digitalWrite(RELAY1, HIGH);
+  digitalWrite(RELAY2, HIGH);
   cycle.close();
   dataFile.close();
 }
