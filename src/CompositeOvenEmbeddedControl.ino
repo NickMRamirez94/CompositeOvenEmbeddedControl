@@ -1,6 +1,7 @@
 // #include <Arduino.h>
  #include <SD.h>
  #include <openGLCD.h>
+ #include <max6675.h>
 
 //Define static variables
 #define B_UP          11
@@ -41,7 +42,10 @@ bool lastButton_back = LOW;
 bool currentButton_back = LOW;
 
 void setup() {
+  //Init peripherals
   Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
+  GLCD.Init();
+  GLCD.SelectFont(Iain5x7);
   
   //Set uC pin modes
   pinMode(B_UP, INPUT_PULLUP);
@@ -51,13 +55,15 @@ void setup() {
   pinMode(SS, OUTPUT);
   pinMode(RELAY1, OUTPUT);
   pinMode(RELAY2, OUTPUT);
+  pinMode(PART_SENSOR1, INPUT);
+  pinMode(PART_SENSOR2, INPUT);
+  pinMode(AIR_SENSOR1, INPUT);
+  pinMode(AIR_SENSOR1, INPUT);
   //Initialize with oven heating elements off
   digitalWrite(RELAY1, HIGH);
   digitalWrite(RELAY2, HIGH);
   
   //Print Title Screen
-  GLCD.Init();
-  GLCD.SelectFont(Iain5x7);
   GLCD.ClearScreen();
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
@@ -958,6 +964,14 @@ void runCycle(){
   byte buffer[5];
   byte dataBuffer[8];
   uint16_t rate, temp;
+  MAX6675 air1;
+  MAX6675 air2;
+  MAX6675 part1;
+  MAX6675 part2;
+  part1.begin(SCK, A4, MISO);
+  part2.begin(SCK, A5, MISO);
+  air1.begin(SCK, A6, MISO);
+  air2.begin(SCK, A7, MISO);
   File cycle = SD.open(cycleFile, FILE_READ);
   if (!cycle) { Serial.write("Can't open file"); }
   cycle.read(title, 20);
@@ -1009,12 +1023,12 @@ void runCycle(){
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       GLCD.CursorTo(0, 7);
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
-      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
         unsigned long time = millis();
-        currentTemp = tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2));
+        currentTemp = tempConversion(part1.readFahrenheit(), part2.readFahrenheit());
         while(millis() < time + 60000) {
-          if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= currentTemp + rate) ||
-             (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T)) {
+          if((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) >= currentTemp + rate) ||
+             (tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) >= currentTemp + rate + DELTA_T)) {
             digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
@@ -1022,11 +1036,11 @@ void runCycle(){
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
-          } else if(((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < currentTemp + rate) && 
-                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= currentTemp + rate - 2) &&
+          } else if(((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) < currentTemp + rate) && 
+                    (tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) >= currentTemp + rate - 2) &&
                     isOn == false) ||
-                    ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) < currentTemp + rate + DELTA_T) && 
-                    (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) >= currentTemp + rate + DELTA_T - 2) &&
+                    ((tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) < currentTemp + rate + DELTA_T) && 
+                    (tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) >= currentTemp + rate + DELTA_T - 2) &&
                     isOn == false)){
             digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
@@ -1046,9 +1060,9 @@ void runCycle(){
           }
 
           GLCD.CursorTo(13, 3);
-          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(air1.readFahrenheit(), air2.readFahrenheit())) + "    ");
           GLCD.CursorTo(10, 4);
-          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(part1.readFahrenheit(), part2.readFahrenheit())) + "    ");
           GLCD.CursorTo(17, 0);
           if((millis() - startTime) / 3600000 < 10)
             GLCD.print("0");
@@ -1064,14 +1078,14 @@ void runCycle(){
           ct = ((millis() - startTime) / 125) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
-            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
-            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
-            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
-            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
-            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
-            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
-            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataBuffer[0] = (tempConversion(part1.readFahrenheit()) >> 8);
+            dataBuffer[1] = tempConversion(part1.readFahrenheit()) & 255;
+            dataBuffer[2] = (tempConversion(part2.readFahrenheit()) >> 8);
+            dataBuffer[3] = tempConversion(part2.readFahrenheit()) & 255;
+            dataBuffer[4] = (tempConversion(air1.readFahrenheit()) >> 8);
+            dataBuffer[5] = tempConversion(air1.readFahrenheit()) & 255;
+            dataBuffer[6] = (tempConversion(air2.readFahrenheit()) >> 8);
+            dataBuffer[7] = tempConversion(air2.readFahrenheit()) & 255;
             dataFile.write(dataBuffer, 8);
           }
           lt = ct;
@@ -1097,7 +1111,7 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       while(millis() - time < (unsigned long)(rate * 60000)) {
-        if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp)) {
+        if((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) >= holdTemp)) {
             digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("Off");
@@ -1105,8 +1119,8 @@ void runCycle(){
             GLCD.CursorTo(7, 1);
             GLCD.print("Off");
             isOn = false;
-          } else if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) < holdTemp + rate) && 
-                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) >= holdTemp + rate - 2) &&
+          } else if((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) < holdTemp + rate) && 
+                    (tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) >= holdTemp + rate - 2) &&
                     isOn == false){
             digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
@@ -1126,9 +1140,9 @@ void runCycle(){
           }
 
           GLCD.CursorTo(13, 3);
-          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(air1.readFahrenheit(), air2.readFahrenheit())) + "    ");
           GLCD.CursorTo(10, 4);
-          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(part1.readFahrenheit(), part2.readFahrenheit())) + "    ");
           GLCD.CursorTo(17, 0);
           if((millis() - startTime) / 3600000 < 10)
             GLCD.print("0");
@@ -1144,14 +1158,14 @@ void runCycle(){
           ct = ((millis() - startTime) / 125) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
-            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
-            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
-            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
-            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
-            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
-            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
-            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataBuffer[0] = (tempConversion(part1.readFahrenheit()) >> 8);
+            dataBuffer[1] = tempConversion(part1.readFahrenheit()) & 255;
+            dataBuffer[2] = (tempConversion(part2.readFahrenheit()) >> 8);
+            dataBuffer[3] = tempConversion(part2.readFahrenheit()) & 255;
+            dataBuffer[4] = (tempConversion(air1.readFahrenheit()) >> 8);
+            dataBuffer[5] = tempConversion(air1.readFahrenheit()) & 255;
+            dataBuffer[6] = (tempConversion(air2.readFahrenheit()) >> 8);
+            dataBuffer[7] = tempConversion(air2.readFahrenheit()) & 255;
             dataFile.write(dataBuffer, 8); 
           }
           lt = ct;         
@@ -1177,12 +1191,12 @@ void runCycle(){
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
-      while(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
         unsigned long time = millis();
-        currentTemp = tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2));
+        currentTemp = tempConversion(part1.readFahrenheit(), part2.readFahrenheit());
         while(millis() < time + 60000) {
-          if((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) <= currentTemp - rate) ||
-             (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) <= currentTemp - rate - DELTA_T)) {
+          if((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) <= currentTemp - rate) ||
+             (tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) <= currentTemp - rate - DELTA_T)) {
             digitalWrite(RELAY1, HIGH);
             GLCD.CursorTo(7, 0);
             GLCD.print("On  ");
@@ -1190,11 +1204,11 @@ void runCycle(){
             GLCD.CursorTo(7, 1);
             GLCD.print("On  ");
             isOn = true;
-          } else if(((tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) > currentTemp - rate) && 
-                    (tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2)) <= currentTemp - rate + 2) &&
+          } else if(((tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) > currentTemp - rate) && 
+                    (tempConversion(part1.readFahrenheit(), part2.readFahrenheit()) <= currentTemp - rate + 2) &&
                     isOn == true) ||
-                    ((tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) > currentTemp - rate - DELTA_T) && 
-                    (tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2)) <= currentTemp - rate - DELTA_T - 2) &&
+                    ((tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) > currentTemp - rate - DELTA_T) && 
+                    (tempConversion(air1.readFahrenheit(), air2.readFahrenheit()) <= currentTemp - rate - DELTA_T - 2) &&
                     isOn == true)){
             digitalWrite(RELAY1, LOW);
             GLCD.CursorTo(7, 0);
@@ -1214,9 +1228,9 @@ void runCycle(){
           }
 
           GLCD.CursorTo(13, 3);
-          GLCD.print(String(tempConversion(analogRead(AIR_SENSOR1), analogRead(AIR_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(air1.readFahrenheit(), air2.readFahrenheit())) + "    ");
           GLCD.CursorTo(10, 4);
-          GLCD.print(String(tempConversion(analogRead(PART_SENSOR1), analogRead(PART_SENSOR2))) + "    ");
+          GLCD.print(String(tempConversion(part1.readFahrenheit(), part2.readFahrenheit())) + "    ");
           GLCD.CursorTo(17, 0);
           if((millis() - startTime) / 3600000 < 10)
             GLCD.print("0");
@@ -1232,14 +1246,14 @@ void runCycle(){
           ct = ((millis() - startTime) / 125) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-            dataBuffer[0] = (tempConversion(analogRead(PART_SENSOR1)) >> 8);
-            dataBuffer[1] = tempConversion(analogRead(PART_SENSOR1)) & 255;
-            dataBuffer[2] = (tempConversion(analogRead(PART_SENSOR2)) >> 8);
-            dataBuffer[3] = tempConversion(analogRead(PART_SENSOR2)) & 255;
-            dataBuffer[4] = (tempConversion(analogRead(AIR_SENSOR1)) >> 8);
-            dataBuffer[5] = tempConversion(analogRead(AIR_SENSOR1)) & 255;
-            dataBuffer[6] = (tempConversion(analogRead(AIR_SENSOR2)) >> 8);
-            dataBuffer[7] = tempConversion(analogRead(AIR_SENSOR2)) & 255;
+            dataBuffer[0] = (tempConversion(part1.readFahrenheit()) >> 8);
+            dataBuffer[1] = tempConversion(part1.readFahrenheit()) & 255;
+            dataBuffer[2] = (tempConversion(part2.readFahrenheit()) >> 8);
+            dataBuffer[3] = tempConversion(part2.readFahrenheit()) & 255;
+            dataBuffer[4] = (tempConversion(air1.readFahrenheit()) >> 8);
+            dataBuffer[5] = tempConversion(air1.readFahrenheit()) & 255;
+            dataBuffer[6] = (tempConversion(air2.readFahrenheit()) >> 8);
+            dataBuffer[7] = tempConversion(air2.readFahrenheit()) & 255;
             dataFile.write(dataBuffer, 8); 
           }
           lt = ct;         
@@ -1294,11 +1308,8 @@ void serialFlush() {
 
 uint16_t tempConversion (int data1, int data2) {
   //Insert code to convert sensor data to a temperature
-  int temp1;
-  int temp2;
-  temp1 = map(data1, 0, 1023, 0, 400);
-  temp2 = map(data2, 0, 1023, 0, 400);
-  return (temp1 + temp2) / 2;
+
+  return (data1 + data2) / 2;
 }
 
 uint16_t tempConversion (int data1) {
