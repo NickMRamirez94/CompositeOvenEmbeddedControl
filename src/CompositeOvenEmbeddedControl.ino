@@ -1233,7 +1233,7 @@ void runCycle(){
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
             GLCD.CursorTo(21, 4);
-            GLCD.print(String(currentTemp) + "  ");
+            GLCD.print(String(currentTemp + rate) + "  ");
 
           }
           lt1 = ct1;
@@ -1449,7 +1449,7 @@ void runCycle(){
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "    ");
             GLCD.CursorTo(21, 4);
-            GLCD.print(String(currentTemp) + "  ");
+            GLCD.print(String(currentTemp - rate) + "  ");
           }
           lt1 = ct1;
 
