@@ -9,7 +9,7 @@
 #define B_DOWN        12
 #define B_ENTER       13
 #define B_BACK        14
-#define BUFFERSIZE    64
+#define BUFFERSIZE    32
 #define RELAY1        0
 #define RELAY2        1
 #define PART_SENSOR1  A4
@@ -17,7 +17,7 @@
 #define AIR_SENSOR1   A6
 #define AIR_SENSOR2   A7
 #define DELTA_T       100
-#define PREHEAT_TEMP  100
+#define PREHEAT_TEMP  80
 
 //Misc global variables
 byte prevMenu = 1;
@@ -74,7 +74,7 @@ void setup() {
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
   GLCD.CursorTo(10, 4);
-  GLCD.print("v  0.2");
+  GLCD.print("v  0.3");
   //Check for SD Card
   if (!SD.begin()) {
     GLCD.CursorTo(0, 7);
@@ -1058,9 +1058,88 @@ void runCycle(){
   
   File dataFile = SD.open(dataFileName, FILE_WRITE);
   dataFile.write(title, 20);
-  totalData++;
+  totalData++; //Add to number of data files on SD
+
+  //Start Preheat Cycle
+  GLCD.CursorTo(0,0);
+  GLCD.print("Preheat Cycle");
+  GLCD.CursorTo(0, 2);
+  GLCD.print("Preheat Temp: " + String(PREHEAT_TEMP));
+  GLCD.CursorTo(0, 3);
+  GLCD.print("Ambient Temp: ");
+  uint16_t currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
+  delay(200);
+  if(currentTemp < PREHEAT_TEMP) {
+    unsigned long startTime = millis();
+    uint16_t a1, a2;
+    digitalWrite(RELAY1, LOW);
+    digitalWrite(RELAY2, LOW);
+    while(currentTemp < PREHEAT_TEMP) {
+      ct = ((millis() - startTime) / 500) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+
+          a1 = air1.readFarenheit();
+          a2 = air2.readFarenheit();
+          currentTemp = tempConversion(a1, a2);
+        
+          GLCD.CursorTo(12, 3);
+          GLCD.print(String(currentTemp) + "         ");
+
+          }
+          lt = ct;
+    }
+    digitalWrite(RELAY1, HIGH);
+    digitalWrite(RELAY2, HIGH);  
+    GLCD.ClearScreen();
+    GLCD.CursorTo(2,2);
+    GLCD.print("Preheat Cycle complete!");
+    GLCD.CursorTo(2,3);
+    GLCD.print("Starting Cure Cycle");
+    delay(3000);
+  } else if(currentTemp > PREHEAT_TEMP + 20) {
+    unsigned long startTime = millis();
+    uint16_t a1, a2;
+    digitalWrite(RELAY1, HIGH);
+    digitalWrite(RELAY2, HIGH);
+    GLCD.CursorTo(0,5);
+    GLCD.print("Oven too hot, reducing temp");
+    GLCD.CursorTo(0,6);
+    GLCD.print("before starting cure cycle");
+    while(currentTemp > PREHEAT_TEMP + 20) {
+      ct = ((millis() - startTime) / 500) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+
+          a1 = air1.readFarenheit();
+          a2 = air2.readFarenheit();
+          currentTemp = tempConversion(a1, a2);
+        
+          GLCD.CursorTo(12, 3);
+          GLCD.print(String(currentTemp) + "         ");
+
+          }
+          lt = ct;
+    }
+    digitalWrite(RELAY1, HIGH);
+    digitalWrite(RELAY2, HIGH);  
+    GLCD.ClearScreen();
+    GLCD.CursorTo(2,2);
+    GLCD.print("Preheat Cycle complete!");
+    GLCD.CursorTo(2,3);
+    GLCD.print("Starting Cure Cycle");
+    delay(3000);    
+  } else {
+    GLCD.ClearScreen();
+    GLCD.CursorTo(0, 3);
+    GLCD.print("Oven withiin temp bounds");
+    GLCD.CursorTo(0, 4);
+    GLCD.print("Starting oven cycle");
+    delay(3000);
+  }
 
   //Generate Cycle Screen
+  GLCD.ClearScreen();
   GLCD.CursorTo(0, 0);
   GLCD.print("Relay  1: ");
   GLCD.CursorTo(0, 1);
@@ -1084,13 +1163,15 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
-      bool isOn;
+      //bool isOn;
       unsigned long rampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
+      GLCD.CursorTo(18, 4);
+      GLCD.print("TT: "); 
       while(partTemp < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met or expected time of ramp is met
         unsigned long time = millis();
         currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
@@ -1114,27 +1195,28 @@ void runCycle(){
           if (lt1 == HIGH && ct1 == LOW) 
           {
             if((partTemp >= currentTemp + rate) ||
-              (airTemp >= currentTemp + rate + DELTA_T)) {
+              (airTemp >= currentTemp + rate + DELTA_T)) {  //When part temp goes over target temp or ambient goes over target + delta T   
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("Off");
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
-              isOn = false;
+              //isOn = false;
             } else if(((partTemp < currentTemp + rate) && 
-                      (partTemp >= currentTemp + rate - 2) &&
-                      isOn == false) ||
-                      ((airTemp < currentTemp + rate + DELTA_T) && 
-                      (airTemp >= currentTemp + rate + DELTA_T - 2) &&
-                      isOn == false)){
-              digitalWrite(RELAY1, HIGH);
+                      (partTemp >= currentTemp + rate - 2) 
+                      //&& isOn == false
+                      ) || ((airTemp < currentTemp + rate + DELTA_T) && 
+                      (airTemp >= currentTemp + rate + DELTA_T - 2)
+                      //&&isOn == false)
+                      )){  //This code prevents rapid on and off. If oven is off, then if must go 2 degrees below target to turn back on (part or ambient)
+              digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
-              GLCD.print("Off");
+              GLCD.print("On");
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
-              isOn = false;
+              //isOn = false;
             } else {            
               digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
@@ -1142,13 +1224,15 @@ void runCycle(){
               digitalWrite(RELAY2, LOW);
               GLCD.CursorTo(7, 1);
               GLCD.print("On  ");
-              isOn = true;
+              //isOn = true;
             }
           
             GLCD.CursorTo(13, 3);
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
+            GLCD.CursorTo(21, 4);
+            GLCD.print(String(currentTemp) + "  ");
 
           }
           lt1 = ct1;
@@ -1198,10 +1282,12 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
-      bool isOn;
+      //bool isOn;
       unsigned long time = millis();
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
+      GLCD.CursorTo(18, 4);
+      GLCD.print("       "); 
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
         ct = ((millis() - startTime) / 125) % 2;
@@ -1225,17 +1311,18 @@ void runCycle(){
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
-              isOn = false;
+              //isOn = false;
             } else if((partTemp < holdTemp + rate) && 
-                      (partTemp >= holdTemp + rate - 2) &&
-                      isOn == false){
-              digitalWrite(RELAY1, HIGH);
+                      (partTemp >= holdTemp + rate - 2)
+                      // && isOn == false
+                      ){
+              digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
-              GLCD.print("Off");
+              GLCD.print("On");
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
-              isOn = false;
+              //isOn = false;
             } else {            
               digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
@@ -1243,7 +1330,7 @@ void runCycle(){
               digitalWrite(RELAY2, LOW);
               GLCD.CursorTo(7, 1);
               GLCD.print("On  ");
-              isOn = true;
+              //isOn = true;
             }
 
             GLCD.CursorTo(13, 3);
@@ -1298,13 +1385,15 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
-      bool isOn;
+      //bool isOn;
       unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       partTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
+      GLCD.CursorTo(18, 4);
+      GLCD.print("TT: ");
       while(partTemp > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
@@ -1314,6 +1403,13 @@ void runCycle(){
           ct = ((millis() - startTime) / 125) % 2;
           if (lt == HIGH && ct == LOW) 
           {
+
+            p1 = convertToF(part1.readThermocoupleTemperature());
+            p2 = convertToF(part2.readThermocoupleTemperature());
+            a1 = air1.readFarenheit();
+            a2 = air2.readFarenheit();
+            partTemp = tempConversion(p1, p2);
+            airTemp = tempConversion(a1, a2);
 
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
@@ -1326,20 +1422,22 @@ void runCycle(){
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("On  ");
-              isOn = true;
+              //isOn = true;
             } else if(((partTemp > currentTemp - rate) && 
-                      (partTemp <= currentTemp - rate + 2) &&
-                      isOn == true) ||
+                      (partTemp <= currentTemp - rate + 2)
+                      //&& isOn == true
+                      ) ||
                       ((airTemp > currentTemp - rate - DELTA_T) && 
-                      (airTemp <= currentTemp - rate - DELTA_T - 2) &&
-                      isOn == true)){
-              digitalWrite(RELAY1, LOW);
+                      (airTemp <= currentTemp - rate - DELTA_T - 2)
+                      // && isOn == true)
+                      )){
+              digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
-              GLCD.print("On  ");
+              GLCD.print("Off ");
               digitalWrite(RELAY2, LOW);
               GLCD.CursorTo(7, 1);
               GLCD.print("On  ");
-              isOn = true;
+              //isOn = true;
             } else {            
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
@@ -1347,13 +1445,15 @@ void runCycle(){
               digitalWrite(RELAY2, HIGH);
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
-              isOn = false;
+              //isOn = false;
             }
 
             GLCD.CursorTo(13, 3);
             GLCD.print(String(airTemp) + "    ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "    ");
+            GLCD.CursorTo(21, 4);
+            GLCD.print(String(currentTemp) + "  ");
           }
           lt1 = ct1;
 
