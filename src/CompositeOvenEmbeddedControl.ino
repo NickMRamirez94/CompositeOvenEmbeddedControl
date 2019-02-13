@@ -1166,15 +1166,15 @@ void runCycle(){
       //bool isOn;
       unsigned long rampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
-      partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
+      airTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: "); 
-      while(partTemp < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met or expected time of ramp is met
+      while(airTemp < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met or expected time of ramp is met
         unsigned long time = millis();
-        currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
+        currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
         delay(200);
         while(millis() < time + 60000) { //Run this loop for 60 seconds
 
@@ -1194,8 +1194,8 @@ void runCycle(){
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
           {
-            if((partTemp >= currentTemp + rate) ||
-              (airTemp >= currentTemp + rate + DELTA_T)) {  //When part temp goes over target temp or ambient goes over target + delta T   
+            if(airTemp >= currentTemp + rate) {
+            // || (airTemp >= currentTemp + rate + DELTA_T)) {  //When part temp goes over target temp or ambient goes over target + delta T   
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("Off");
@@ -1203,13 +1203,14 @@ void runCycle(){
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
               //isOn = false;
-            } else if(((partTemp < currentTemp + rate) && 
-                      (partTemp >= currentTemp + rate - 2) 
+            } else if((airTemp < currentTemp + rate) && 
+                      (airTemp >= currentTemp + rate - 2)) 
                       //&& isOn == false
-                      ) || ((airTemp < currentTemp + rate + DELTA_T) && 
-                      (airTemp >= currentTemp + rate + DELTA_T - 2)
+                      //|| ((airTemp < currentTemp + rate + DELTA_T) && 
+                      //(airTemp >= currentTemp + rate + DELTA_T - 2)
                       //&&isOn == false)
-                      )){  //This code prevents rapid on and off. If oven is off, then if must go 2 degrees below target to turn back on (part or ambient)
+                      //))
+                      {  //This code prevents rapid on and off. If oven is off, then if must go 2 degrees below target to turn back on (part or ambient)
               digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
               GLCD.print("On");
@@ -1304,7 +1305,7 @@ void runCycle(){
         ct1 = ((millis() - startTime) / 500) % 2;
         if (lt1 == HIGH && ct1 == LOW) 
         {
-          if(partTemp >= holdTemp) {
+          if(airTemp >= holdTemp) {
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("Off");
@@ -1312,8 +1313,8 @@ void runCycle(){
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
               //isOn = false;
-            } else if((partTemp < holdTemp + rate) && 
-                      (partTemp >= holdTemp + rate - 2)
+            } else if((airTemp < holdTemp + rate) && 
+                      (airTemp >= holdTemp + rate - 2)
                       // && isOn == false
                       ){
               digitalWrite(RELAY1, LOW);
@@ -1388,15 +1389,15 @@ void runCycle(){
       //bool isOn;
       unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
-      partTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
+      airTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: ");
-      while(partTemp > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(airTemp > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
         unsigned long time = millis();
-        currentTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
+        currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
         delay(200);
         while(millis() < time + 60000) {
 
@@ -1414,8 +1415,7 @@ void runCycle(){
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
           {  
-            if((partTemp <= currentTemp - rate) ||
-              (airTemp <= currentTemp - rate - DELTA_T)) {
+            if(airTemp <= currentTemp - rate) {
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("On  ");
@@ -1423,14 +1423,10 @@ void runCycle(){
               GLCD.CursorTo(7, 1);
               GLCD.print("On  ");
               //isOn = true;
-            } else if(((partTemp > currentTemp - rate) && 
-                      (partTemp <= currentTemp - rate + 2)
+            } else if((airTemp > currentTemp - rate) && 
+                      (airTemp <= currentTemp - rate + 2)
                       //&& isOn == true
-                      ) ||
-                      ((airTemp > currentTemp - rate - DELTA_T) && 
-                      (airTemp <= currentTemp - rate - DELTA_T - 2)
-                      // && isOn == true)
-                      )){
+                      ) {
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("Off ");
