@@ -1185,7 +1185,7 @@ void runCycle(){
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: "); 
-      while(airTemp < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met or expected time of ramp is met
+      while(airTemp <= temp) { //Loop until ramp temp is met or expected time of ramp is met
         unsigned long time = millis();
         currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
         delay(200);
@@ -1410,7 +1410,7 @@ void runCycle(){
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: ");
-      while(airTemp > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(airTemp > temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
         delay(200);
