@@ -1172,7 +1172,7 @@ void runCycle(){
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: "); 
-      while(partTemp < temp && (millis() - rampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met or expected time of ramp is met
+      while(partTemp < temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
         delay(200);
@@ -1287,7 +1287,7 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("       "); 
+      GLCD.print("TT: "); 
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
         ct = ((millis() - startTime) / 125) % 2;
@@ -1313,7 +1313,7 @@ void runCycle(){
               GLCD.print("Off");
               //isOn = false;
             } else if((partTemp < holdTemp + rate) && 
-                      (partTemp >= holdTemp + rate - 2)
+                      (partTemp >= holdTemp - 2)
                       // && isOn == false
                       ){
               digitalWrite(RELAY1, LOW);
@@ -1337,6 +1337,8 @@ void runCycle(){
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
+            GLCD.CursorTo(21, 4);
+            GLCD.print(String(holdTemp) + "  ");
           }
           lt1 = ct1;
           
@@ -1394,7 +1396,7 @@ void runCycle(){
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: ");
-      while(partTemp > temp && (millis() - derampStart) < (temp / rate) * 60000) { //Loop until ramp temp is met
+      while(partTemp > temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
         delay(200);
