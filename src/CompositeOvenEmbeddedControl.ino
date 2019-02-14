@@ -17,7 +17,7 @@
 #define AIR_SENSOR1   A6
 #define AIR_SENSOR2   A7
 #define DELTA_T       100
-#define PREHEAT_TEMP  80
+#define PREHEAT_TEMP  100
 
 //Misc global variables
 byte prevMenu = 1;
@@ -193,7 +193,7 @@ void setup() {
 
 void mainMenu() {
   GLCD.ClearScreen();
-  GLCD.CursorTo(9, 0);  
+  GLCD.CursorTo(8, 0);  
   GLCD.print("Main  Menu");
   GLCD.CursorTo(2, 2);
   GLCD.print("List  Saved  Cure  Cycles");
@@ -1088,6 +1088,19 @@ void runCycle(){
 
           }
           lt = ct;
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(5, 3);
+            GLCD.print("Preheat Cancelled");
+            delay(3000);
+            lastButton_back = HIGH;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
+
     }
     digitalWrite(RELAY1, HIGH);
     digitalWrite(RELAY2, HIGH);  
@@ -1288,7 +1301,7 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("       "); 
+      GLCD.print("TT: "); 
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
         ct = ((millis() - startTime) / 125) % 2;
@@ -1313,8 +1326,8 @@ void runCycle(){
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
               //isOn = false;
-            } else if((airTemp < holdTemp + rate) && 
-                      (airTemp >= holdTemp + rate - 2)
+            } else if((airTemp < holdTemp) && 
+                      (airTemp >= holdTemp - 2)
                       // && isOn == false
                       ){
               digitalWrite(RELAY1, LOW);
@@ -1338,6 +1351,8 @@ void runCycle(){
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
+            GLCD.CursorTo(21, 4);
+            GLCD.print(String(holdTemp) + "   ");
           }
           lt1 = ct1;
           
