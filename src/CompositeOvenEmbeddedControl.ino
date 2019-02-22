@@ -17,7 +17,7 @@
 #define AIR_SENSOR1   A6
 #define AIR_SENSOR2   A7
 #define DELTA_T       100
-#define PREHEAT_TEMP  100
+#define PREHEAT_TEMP  80
 
 //Misc global variables
 byte prevMenu = 1;
@@ -45,7 +45,6 @@ bool currentButton_back = HIGH;
 
 void setup() {
   //Init peripherals
-  Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
   GLCD.Init();
   GLCD.SelectFont(Iain5x7);
   
@@ -698,6 +697,7 @@ void dataLogOptions() {
 }
 
 void downloadData() {
+  Serial.begin(38400, SERIAL_8N1); //Initialize Serial Connection
   String dirD = "/data/";
   String name = "";
   int data;
@@ -740,7 +740,7 @@ void downloadData() {
     }
     lastButton_back = currentButton_back; //reset button value
   }
-
+  Serial.end();
   prevMenu = 5;  
 }
 
@@ -785,6 +785,7 @@ void deleteData() {
 }
 
 void upload() {
+  Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
   String dirC = "/cycles/";
   String ext = ".mit";
   String name = "";
@@ -899,6 +900,7 @@ void upload() {
     }
     lastButton_back = currentButton_back; //reset button value
   }
+  Serial.end();
 }
 
 void viewCycle(){
@@ -1177,14 +1179,16 @@ void runCycle(){
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
       //bool isOn;
-      unsigned long rampStart = millis();
+      //unsigned long rampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       airTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: "); 
+      GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("            ");  
       while(airTemp <= temp) { //Loop until ramp temp is met or expected time of ramp is met
         unsigned long time = millis();
         currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
@@ -1192,7 +1196,7 @@ void runCycle(){
         while(millis() < time + 60000) { //Run this loop for 60 seconds
 
           //Grab temp, set relays, write to display every second, write to SD card every quarter second
-          ct = ((millis() - startTime) / 125) % 2;
+          ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
 
@@ -1301,10 +1305,12 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: "); 
+      GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("TR: "); 
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
-        ct = ((millis() - startTime) / 125) % 2;
+        ct = ((millis() - startTime) / 250) % 2;
         if (lt == HIGH && ct == LOW) 
         {
 
@@ -1367,6 +1373,17 @@ void runCycle(){
             GLCD.print("0");
           GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
 
+          GLCD.CursorTo(17, 1);
+          if((((unsigned long)(rate * 60000) + time) - millis()) / 3600000 < 10)
+            GLCD.print("0");
+          GLCD.print(String((((unsigned long)(rate * 60000) + time) - millis()) / 3600000) + ":");
+          if(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60) + ":");
+          if(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60 < 10)
+            GLCD.print("0");
+          GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60) + "   ");          
+
           //Write to SD card
 
           dataBuffer[0] = p1 >> 8;
@@ -1402,7 +1419,7 @@ void runCycle(){
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
       //bool isOn;
-      unsigned long derampStart = millis();
+      //unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       airTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
       delay(200);
@@ -1410,13 +1427,15 @@ void runCycle(){
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("            ");      
       while(airTemp > temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
         delay(200);
         while(millis() < time + 60000) {
 
-          ct = ((millis() - startTime) / 125) % 2;
+          ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
 
@@ -1546,9 +1565,9 @@ void serialFlush() {
 
 uint16_t tempConversion (uint16_t data1, uint16_t data2) {
   //Insert code to convert sensor data to a temperature
-  //return data1;
+  return data1;
   //return data2;
-  return (data1 + data2) / 2;
+  //return (data1 + data2) / 2;
 }
 
 uint16_t convertToF(uint16_t temp) {
