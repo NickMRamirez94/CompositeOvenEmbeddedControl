@@ -16,7 +16,7 @@
 #define PART_SENSOR2  A5
 #define AIR_SENSOR1   A6
 #define AIR_SENSOR2   A7
-#define DELTA_T       100
+#define DELTA_T       50
 #define PREHEAT_TEMP  80
 
 //Misc global variables
@@ -32,6 +32,7 @@ byte indexData = 0;
 byte indexDLO = 2;
 String currentFile;
 String currentName;
+char timeBuff[9];
 
 //Button state flags. Used for detecting button presses.
 bool lastButton_up = HIGH;
@@ -45,7 +46,6 @@ bool currentButton_back = HIGH;
 
 void setup() {
   //Init peripherals
-  Serial.begin(9600, SERIAL_8N1); //Initialize Serial Connection
   GLCD.Init();
   GLCD.SelectFont(Iain5x7);
   
@@ -74,7 +74,7 @@ void setup() {
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
   GLCD.CursorTo(10, 4);
-  GLCD.print("v  0.3");
+  GLCD.print("v  0.4");
   //Check for SD Card
   if (!SD.begin()) {
     GLCD.CursorTo(0, 7);
@@ -82,7 +82,7 @@ void setup() {
     while(1);    
   }
 
-  //Count number of cure cycles on SD Card
+  //Check if cycle directory exists. If no, create it
   File cycleDir;
   cycleDir = SD.open("/cycles");
   if(!cycleDir) {
@@ -93,7 +93,7 @@ void setup() {
     delay(500);
   }
     
-  //Count Total Files
+  //Count number of cure cycles on SD Card
   while(1) {
     File entry = cycleDir.openNextFile();
     if(!entry) { break; }
@@ -102,7 +102,7 @@ void setup() {
   }
   cycleDir.close();
 
-  //Count number of data logs on SD Card
+  //Check if data directory exists. If no, create it
   File dataDir;
   dataDir = SD.open("/data");
   if(!dataDir) {
@@ -113,7 +113,7 @@ void setup() {
     delay(500);
   }
   
-  //Count Total Files
+  //Count number of data logs on SD Card
   while(1) {
     File entry = dataDir.openNextFile();
     if(!entry) { break; }
@@ -151,6 +151,15 @@ void setup() {
     } 
   }
   tempFile.close();
+
+  //Create log Directory if it doesn't exist  
+  File logDir;
+  logDir = SD.open("/log");
+  if(!logDir) {
+    SD.mkdir("/log");
+    logDir = SD.open("/log");
+  }
+  logDir.close();  
   
   delay(1000);
   GLCD.ClearScreen();
@@ -193,7 +202,7 @@ void setup() {
 
 void mainMenu() {
   GLCD.ClearScreen();
-  GLCD.CursorTo(9, 0);  
+  GLCD.CursorTo(8, 0);  
   GLCD.print("Main  Menu");
   GLCD.CursorTo(2, 2);
   GLCD.print("List  Saved  Cure  Cycles");
@@ -698,6 +707,7 @@ void dataLogOptions() {
 }
 
 void downloadData() {
+  Serial.begin(38400, SERIAL_8N1); //Initialize Serial Connection
   String dirD = "/data/";
   String name = "";
   int data;
@@ -741,6 +751,7 @@ void downloadData() {
     lastButton_back = currentButton_back; //reset button value
   }
 
+  Serial.end();
   prevMenu = 5;  
 }
 
@@ -785,6 +796,7 @@ void deleteData() {
 }
 
 void upload() {
+  Serial.begin(9600, SERIAL_8N1);
   String dirC = "/cycles/";
   String ext = ".mit";
   String name = "";
@@ -799,7 +811,6 @@ void upload() {
   GLCD.ClearScreen();
   GLCD.CursorTo(4, 2);
   GLCD.print("Ready to receive file...");
-  while(!digitalRead(B_ENTER));
   delay(50);
   lastButton_enter = HIGH;
   currentButton_enter = HIGH;
@@ -899,6 +910,8 @@ void upload() {
     }
     lastButton_back = currentButton_back; //reset button value
   }
+  prevMenu = 1;
+  Serial.end();
 }
 
 void viewCycle(){
@@ -999,16 +1012,19 @@ void deleteCycle() {
     lastButton_enter = currentButton_enter; //reset button value
 
   }
-  prevMenu = 3;
+  prevMenu = 2;
 }
 
 void runCycle(){
   GLCD.ClearScreen();
   String dirC = "/cycles/";
   String dirD = "/data/";
-  String ext = ".dat";
+  String dirL = "/log/";
+  String dataExt = ".dat";
+  String logExt = ".log";
   String cycleFile = dirC + currentFile;
   String dataFileName;
+  String logFileName;
   String name = "";
   String airDisplay;
   String partDisplay;
@@ -1027,12 +1043,12 @@ void runCycle(){
   currentButton_enter = HIGH;
   lastButton_back = HIGH;
   currentButton_back = HIGH;
+  Adafruit_MAX31855 air1(A4);
+  Adafruit_MAX31855 air2(A5);  
   Adafruit_MAX31856 part1(A6);
   Adafruit_MAX31856 part2(A7);
-  Adafruit_MAX31855 air1(A4);
-  Adafruit_MAX31855 air2(A5);
-  part1.begin();
-  part2.begin();
+  air1.begin();
+  air2.begin();
   part1.setThermocoupleType(MAX31856_TCTYPE_K);
   part2.setThermocoupleType(MAX31856_TCTYPE_K);
   File cycle = SD.open(cycleFile, FILE_READ);
@@ -1050,15 +1066,23 @@ void runCycle(){
       }        
       digits++;
   }
-  name += ext;
-  dataFileName = dirD + name;
+  //name += ext;
+  dataFileName = dirD + name + dataExt;
+  logFileName = dirL + name + logExt;
 
   if(SD.exists(dataFileName))
     SD.remove(dataFileName);
+
+  if(SD.exists(logFileName))
+    SD.remove(logFileName);    
   
   File dataFile = SD.open(dataFileName, FILE_WRITE);
   dataFile.write(title, 20);
   totalData++; //Add to number of data files on SD
+
+  File logFile = SD.open(logFileName, FILE_WRITE);
+  logFile.write(title, 20);
+  logFile.write("\n\nPreheat started\n");
 
   //Start Preheat Cycle
   GLCD.CursorTo(0,0);
@@ -1088,6 +1112,19 @@ void runCycle(){
 
           }
           lt = ct;
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(5, 3);
+            GLCD.print("Preheat Cancelled");
+            delay(3000);
+            lastButton_back = HIGH;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value
+
     }
     digitalWrite(RELAY1, HIGH);
     digitalWrite(RELAY2, HIGH);  
@@ -1120,6 +1157,18 @@ void runCycle(){
 
           }
           lt = ct;
+
+          currentButton_back = digitalRead(B_BACK); //read button state
+          if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
+          {
+            GLCD.ClearScreen();
+            GLCD.CursorTo(5, 3);
+            GLCD.print("Preheat Cancelled");
+            delay(3000);
+            lastButton_back = HIGH;
+            break;
+          }
+          lastButton_back = currentButton_back; //reset button value          
     }
     digitalWrite(RELAY1, HIGH);
     digitalWrite(RELAY2, HIGH);  
@@ -1137,6 +1186,7 @@ void runCycle(){
     GLCD.print("Starting oven cycle");
     delay(3000);
   }
+  logFile.write("Preheat Finished\n");
 
   //Generate Cycle Screen
   GLCD.ClearScreen();
@@ -1152,6 +1202,8 @@ void runCycle(){
   GLCD.print("Current  Instruction: ");
   //Start of cycle
   unsigned long startTime = millis();
+  logFile.write(readTime(startTime));
+  logFile.write(" -- Start of Cure Cycle\n");
   while((data = cycle.read(buffer, 5)) > 0) {
     //Convert rate and temp bytes to variables
     rate = ((uint16_t)buffer[1] << 8) | (uint16_t)buffer[2];
@@ -1164,22 +1216,35 @@ void runCycle(){
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
       //bool isOn;
-      unsigned long rampStart = millis();
+      //unsigned long rampStart = millis();      
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
       delay(200);
       GLCD.CursorTo(0, 7);
       GLCD.print("Ramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: "); 
+      GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("            ");
+      logFile.write(readTime(startTime));
+      logFile.write(" -- Start of Ramp Cycle: ");
+      logFile.write("Ramp to ");
+      logFile.write(String(temp).c_str());
+      logFile.write(" at ");
+      logFile.write(String(rate).c_str());
+      logFile.write("\n"); 
       while(partTemp < temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
         delay(200);
+        logFile.write(readTime(startTime));
+        logFile.write(" -- Running to target temp ");
+        logFile.write(String(currentTemp + rate).c_str());
+        logFile.write("\n");
         while(millis() < time + 60000) { //Run this loop for 60 seconds
 
           //Grab temp, set relays, write to display every second, write to SD card every quarter second
-          ct = ((millis() - startTime) / 125) % 2;
+          ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
 
@@ -1232,21 +1297,22 @@ void runCycle(){
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
             GLCD.CursorTo(21, 4);
-            GLCD.print(String(currentTemp) + "  ");
+            GLCD.print(String(currentTemp + rate) + "  ");
 
           }
           lt1 = ct1;
 
-          GLCD.CursorTo(17, 0);          
-          if((millis() - startTime) / 3600000 < 10)
-            GLCD.print("0");
-          GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          if(((millis() - startTime) / 60000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          if(((millis() - startTime) / 1000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+          printTime(17, 0, startTime);
+          // GLCD.CursorTo(17, 0);          
+          // if((millis() - startTime) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          // if(((millis() - startTime) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          // if(((millis() - startTime) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
 
           //Write to SD card
           dataBuffer[0] = p1 >> 8;
@@ -1268,15 +1334,25 @@ void runCycle(){
             GLCD.ClearScreen();
             GLCD.CursorTo(6, 3);
             GLCD.print("Cycle Cancelled");
+            logFile.write(readTime(startTime));
+            logFile.write(" -- Cycle Cancelled during Ramp Instruction\n");
             delay(3000);
             isExit = true;
             break;
           }
           lastButton_back = currentButton_back; //reset button value
 
-        }
-        if(isExit) { break; }        
-      }   
+        }               
+        if(isExit) { break; }
+      }
+      if(isExit) { break; }
+      logFile.write(readTime(startTime));
+      logFile.write(" -- End of Ramp Cycle: ");
+      logFile.write("Ramp to ");
+      logFile.write(String(temp).c_str());
+      logFile.write(" at ");
+      logFile.write(String(rate).c_str());
+      logFile.write("\n");
     //Hold Code
     } else if(buffer[0] == 72) {
       uint16_t partTemp;
@@ -1287,10 +1363,17 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: "); 
+      GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("TR: "); 
+      logFile.write(readTime(startTime));
+      logFile.write(" -- Start of Hold Cycle: ");
+      logFile.write("Hold for ");
+      logFile.write(String(rate).c_str());
+      logFile.write(" minnutes\n");
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
-        ct = ((millis() - startTime) / 125) % 2;
+        ct = ((millis() - startTime) / 250) % 2;
         if (lt == HIGH && ct == LOW) 
         {
 
@@ -1342,16 +1425,29 @@ void runCycle(){
           }
           lt1 = ct1;
           
-          GLCD.CursorTo(17, 0);
-          if((millis() - startTime) / 3600000 < 10)
-            GLCD.print("0");
-          GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          if(((millis() - startTime) / 60000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          if(((millis() - startTime) / 1000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+          printTime(17, 0, startTime);
+          // GLCD.CursorTo(17, 0);
+          // if((millis() - startTime) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          // if(((millis() - startTime) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          // if(((millis() - startTime) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+
+          printTime(17, 1, time, rate);
+          // GLCD.CursorTo(17, 1);
+          // if((((unsigned long)(rate * 60000) + time) - millis()) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((((unsigned long)(rate * 60000) + time) - millis()) / 3600000) + ":");
+          // if(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60) + ":");
+          // if(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60) + "   ");           
 
           //Write to SD card
 
@@ -1374,6 +1470,8 @@ void runCycle(){
             GLCD.ClearScreen();
             GLCD.CursorTo(6, 3);
             GLCD.print("Cycle Cancelled");
+            logFile.write(readTime(startTime));
+            logFile.write(" -- Cycle Cancelled during Hold Instruction\n");            
             delay(3000);
             isExit = true;
             break;
@@ -1381,6 +1479,11 @@ void runCycle(){
           lastButton_back = currentButton_back; //reset button value 
       }
       if(isExit) { break; }
+      logFile.write(readTime(startTime));
+      logFile.write(" -- End of Hold Cycle: ");
+      logFile.write("Hold for ");
+      logFile.write(String(rate).c_str());
+      logFile.write(" minnutes\n");      
     //Deramp Code
     } else if(buffer[0] == 68) {
       uint16_t currentTemp;
@@ -1388,7 +1491,7 @@ void runCycle(){
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
       //bool isOn;
-      unsigned long derampStart = millis();
+      //unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
       partTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
       delay(200);
@@ -1396,13 +1499,27 @@ void runCycle(){
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
       GLCD.print("TT: ");
+      GLCD.CursorTo(14, 1);
+      GLCD.print("            ");      
+      logFile.write(readTime(startTime));
+      logFile.write(" -- Start of Deramp Cycle: ");
+      logFile.write("Deramp to ");
+      logFile.write(String(temp).c_str());
+      logFile.write(" at ");
+      logFile.write(String(rate).c_str());
+      logFile.write("\n"); 
+
       while(partTemp > temp) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
         delay(200);
+        logFile.write(readTime(startTime));
+        logFile.write(" -- Running to target temp ");
+        logFile.write(String(currentTemp - rate).c_str());
+        logFile.write("\n");        
         while(millis() < time + 60000) {
 
-          ct = ((millis() - startTime) / 125) % 2;
+          ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
 
@@ -1455,20 +1572,21 @@ void runCycle(){
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "    ");
             GLCD.CursorTo(21, 4);
-            GLCD.print(String(currentTemp) + "  ");
+            GLCD.print(String(currentTemp - rate) + "  ");
           }
           lt1 = ct1;
 
-          GLCD.CursorTo(17, 0);
-          if((millis() - startTime) / 3600000 < 10)
-            GLCD.print("0");
-          GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          if(((millis() - startTime) / 60000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          if(((millis() - startTime) / 1000) % 60 < 10)
-            GLCD.print("0");
-          GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+          printTime(17, 0, startTime);
+          // GLCD.CursorTo(17, 0);
+          // if((millis() - startTime) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          // if(((millis() - startTime) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          // if(((millis() - startTime) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
 
           //Write to SD card
 
@@ -1492,6 +1610,8 @@ void runCycle(){
             GLCD.ClearScreen();
             GLCD.CursorTo(6, 3);
             GLCD.print("Cycle Cancelled");
+            logFile.write(readTime(startTime));
+            logFile.write(" -- Cycle Cancelled during Deramp Instruction\n");
             delay(3000);
             isExit = true;
             break;
@@ -1499,11 +1619,20 @@ void runCycle(){
           lastButton_back = currentButton_back; //reset button value
           
         }
-        if (isExit) { break; }    
+        if (isExit) { break; }
+    
       }
+        logFile.write(readTime(startTime));
+        logFile.write(" -- End of Deramp Cycle: ");
+        logFile.write("Deramp to ");
+        logFile.write(String(temp).c_str());
+        logFile.write(" at ");
+        logFile.write(String(rate).c_str());
+        logFile.write("\n"); 
     }
 
     if (isExit) { break; }
+
   }
 
   if(!isExit) {
@@ -1512,21 +1641,25 @@ void runCycle(){
     GLCD.print("Cycle Complete!");
     GLCD.CursorTo(4, 4);
     GLCD.print("Total Time: ");
-    if((millis() - startTime) / 3600000 < 10)
-      GLCD.print("0");
-    GLCD.print(String((millis() - startTime) / 3600000) + ":");
-    if(((millis() - startTime) / 60000) % 60 < 10)
-      GLCD.print("0");
-    GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-    if(((millis() - startTime) / 1000) % 60 < 10)
-      GLCD.print("0");
-    GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+    printTime(startTime);
+    // if((millis() - startTime) / 3600000 < 10)
+    //   GLCD.print("0");
+    // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+    // if(((millis() - startTime) / 60000) % 60 < 10)
+    //   GLCD.print("0");
+    // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+    // if(((millis() - startTime) / 1000) % 60 < 10)
+    //   GLCD.print("0");
+    // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "     ");
+    logFile.write(readTime(startTime));
+    logFile.write(" -- Cycle Completed\n");
     delay(3000);
   }
   digitalWrite(RELAY1, HIGH);
   digitalWrite(RELAY2, HIGH);
   cycle.close();
   dataFile.close();
+  logFile.close();
   prevMenu = 3;
 }
 
@@ -1537,11 +1670,64 @@ void serialFlush() {
 
 uint16_t tempConversion (uint16_t data1, uint16_t data2) {
   //Insert code to convert sensor data to a temperature
-  //return data1;
+  return data1;
   //return data2;
-  return (data1 + data2) / 2;
+  //return (data1 + data2) / 2;
 }
 
 uint16_t convertToF(uint16_t temp) {
   return (temp * 9 / 5) + 32;
+}
+
+void printTime(byte col, byte row, unsigned long time) {
+  GLCD.CursorTo(col, row);          
+  if((millis() - time) / 3600000 < 10)
+    GLCD.print("0");
+  GLCD.print(String((millis() - time) / 3600000) + ":");
+  if(((millis() - time) / 60000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((millis() - time) / 60000) % 60) + ":");
+  if(((millis() - time) / 1000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((millis() - time) / 1000) % 60) + "   ");
+}
+
+void printTime(byte col, byte row, unsigned long time, uint16_t rate) {
+  GLCD.CursorTo(col, row); 
+  if((((unsigned long)(rate * 60000) + time) - millis()) / 3600000 < 10)
+    GLCD.print("0");
+  GLCD.print(String((((unsigned long)(rate * 60000) + time) - millis()) / 3600000) + ":");
+  if(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60) + ":");
+  if(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60) + "   ");    
+}
+
+void printTime(unsigned long time) {
+  if((millis() - time) / 3600000 < 10)
+    GLCD.print("0");
+  GLCD.print(String((millis() - time) / 3600000) + ":");
+  if(((millis() - time) / 60000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((millis() - time) / 60000) % 60) + ":");
+  if(((millis() - time) / 1000) % 60 < 10)
+    GLCD.print("0");
+  GLCD.print(String(((millis() - time) / 1000) % 60) + "   ");
+}
+
+char* readTime(unsigned long time) {
+  String charTime;
+  if((millis() - time) / 3600000 < 10)
+    charTime += "0";
+  charTime += String((millis() - time) / 3600000) + ":";   
+  if(((millis() - time) / 60000) % 60 < 10)
+    charTime += "0";
+  charTime += String(((millis() - time) / 60000) % 60) + ":";   
+  if(((millis() - time) / 1000) % 60 < 10)
+    charTime += "0";
+  charTime += String(((millis() - time) / 1000) % 60) + "   ";
+  charTime.toCharArray(timeBuff, 9);
+  return timeBuff;
 }
