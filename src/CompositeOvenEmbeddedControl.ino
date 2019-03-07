@@ -6,16 +6,18 @@
 
 //Define static variables
 #define B_UP          11
-#define B_DOWN        12
+#define B_DOWN        10
 #define B_ENTER       13
 #define B_BACK        14
 #define BUFFERSIZE    32
 #define RELAY1        0
 #define RELAY2        1
-#define PART_SENSOR1  A4
-#define PART_SENSOR2  A5
-#define AIR_SENSOR1   A6
-#define AIR_SENSOR2   A7
+#define PART_SENSOR1  A6
+#define PART_SENSOR2  A7
+#define AIR_SENSOR1   2
+#define AIR_SENSOR2   3
+#define P_SENSOR      A4
+#define SPEAKER       12
 #define DELTA_T       50
 #define PREHEAT_TEMP  80
 
@@ -1043,10 +1045,10 @@ void runCycle(){
   currentButton_enter = HIGH;
   lastButton_back = HIGH;
   currentButton_back = HIGH;
-  Adafruit_MAX31855 air1(A4);
-  Adafruit_MAX31855 air2(A5);  
-  Adafruit_MAX31856 part1(A6);
-  Adafruit_MAX31856 part2(A7);
+  Adafruit_MAX31855 air1(AIR_SENSOR1);
+  Adafruit_MAX31855 air2(AIR_SENSOR2);  
+  Adafruit_MAX31856 part1(PART_SENSOR1);
+  Adafruit_MAX31856 part2(PART_SENSOR2);
   air1.begin();
   air2.begin();
   part1.setThermocoupleType(MAX31856_TCTYPE_K);
@@ -1670,9 +1672,9 @@ void serialFlush() {
 
 uint16_t tempConversion (uint16_t data1, uint16_t data2) {
   //Insert code to convert sensor data to a temperature
-  return data1;
+  //return data1;
   //return data2;
-  //return (data1 + data2) / 2;
+  return (data1 + data2) / 2;
 }
 
 uint16_t convertToF(uint16_t temp) {
