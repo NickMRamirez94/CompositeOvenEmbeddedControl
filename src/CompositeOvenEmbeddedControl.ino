@@ -2,7 +2,8 @@
  #include <SD.h>
  #include <openGLCD.h>
  #include <Adafruit_MAX31856.h>
- #include <Adafruit_MAX31855.h>
+ #include <PID_v1.h>
+ //#include <Adafruit_MAX31855.h>
 
 //Define static variables
 #define B_UP          11
@@ -19,7 +20,7 @@
 #define P_SENSOR      A4
 #define SPEAKER       12
 #define DELTA_T       50
-#define PREHEAT_TEMP  80
+#define PREHEAT_TEMP  120
 
 //Misc global variables
 byte prevMenu = 1;
@@ -1031,6 +1032,8 @@ void runCycle(){
   String airDisplay;
   String partDisplay;
   uint16_t holdTemp;
+  double input = 80, output = 50, setpoint = PREHEAT_TEMP;
+  double kp = 2, ki = 0.5, kd = 2;
   bool ct = false;
   bool lt = false;
   bool ct1 = false;
@@ -1045,12 +1048,18 @@ void runCycle(){
   currentButton_enter = HIGH;
   lastButton_back = HIGH;
   currentButton_back = HIGH;
-  Adafruit_MAX31855 air1(AIR_SENSOR1);
-  Adafruit_MAX31855 air2(AIR_SENSOR2);  
+  PID myPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);
+  myPID.SetMode(AUTOMATIC);
+  Adafruit_MAX31856 air1(AIR_SENSOR1);
+  Adafruit_MAX31856 air2(AIR_SENSOR2);  
   Adafruit_MAX31856 part1(PART_SENSOR1);
   Adafruit_MAX31856 part2(PART_SENSOR2);
   air1.begin();
   air2.begin();
+  part1.begin();
+  part2.begin();
+  air1.setThermocoupleType(MAX31856_TCTYPE_K);
+  air2.setThermocoupleType(MAX31856_TCTYPE_K);
   part1.setThermocoupleType(MAX31856_TCTYPE_K);
   part2.setThermocoupleType(MAX31856_TCTYPE_K);
   File cycle = SD.open(cycleFile, FILE_READ);
@@ -1093,7 +1102,7 @@ void runCycle(){
   GLCD.print("Preheat Temp: " + String(PREHEAT_TEMP));
   GLCD.CursorTo(0, 3);
   GLCD.print("Ambient Temp: ");
-  uint16_t currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
+  uint16_t currentTemp = convertToF(tempConversion(air1.readThermocoupleTemperature(), air2.readThermocoupleTemperature()));
   delay(200);
   if(currentTemp < PREHEAT_TEMP) {
     unsigned long startTime = millis();
@@ -1105,8 +1114,8 @@ void runCycle(){
           if (lt == HIGH && ct == LOW) 
           {
 
-          a1 = air1.readFarenheit();
-          a2 = air2.readFarenheit();
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
           currentTemp = tempConversion(a1, a2);
         
           GLCD.CursorTo(12, 3);
@@ -1150,8 +1159,8 @@ void runCycle(){
           if (lt == HIGH && ct == LOW) 
           {
 
-          a1 = air1.readFarenheit();
-          a2 = air2.readFarenheit();
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
           currentTemp = tempConversion(a1, a2);
         
           GLCD.CursorTo(12, 3);
