@@ -77,7 +77,7 @@ void setup() {
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
   GLCD.CursorTo(10, 4);
-  GLCD.print("v  0.4");
+  GLCD.print("v  0.5");
   //Check for SD Card
   if (!SD.begin()) {
     GLCD.CursorTo(0, 7);
@@ -1266,6 +1266,10 @@ void runCycle(){
             setpoint = partTemp + rate;
             myPID.Compute();
             adjOutput = (output / 255) * 1000;
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");            
             digitalWrite(0, LOW);
             digitalWrite(1, LOW);
             dutyTime = millis();
@@ -1282,6 +1286,10 @@ void runCycle(){
 
           //Duty cycle control
           if (millis() > dutyTime + adjOutput) {
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off  ");
             digitalWrite(0, HIGH);
             digitalWrite(1, HIGH);
           }
@@ -1369,6 +1377,10 @@ void runCycle(){
             input = partTemp;
             myPID.Compute();
             adjOutput = (output / 255) * 1000;
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");             
             digitalWrite(0, LOW);
             digitalWrite(1, LOW);
             dutyTime = millis();
@@ -1385,6 +1397,10 @@ void runCycle(){
 
           //Duty cycle control
           if (millis() > dutyTime + adjOutput) {
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off  ");            
             digitalWrite(0, HIGH);
             digitalWrite(1, HIGH);
           }
@@ -1482,6 +1498,10 @@ void runCycle(){
             setpoint = partTemp - rate;
             myPID.Compute();
             adjOutput = (output / 255) * 1000;
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");             
             digitalWrite(0, LOW);
             digitalWrite(1, LOW);
             dutyTime = millis();
@@ -1498,6 +1518,10 @@ void runCycle(){
 
           //Duty cycle control
           if (millis() > dutyTime + adjOutput) {
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off  ");            
             digitalWrite(0, HIGH);
             digitalWrite(1, HIGH);
           }
