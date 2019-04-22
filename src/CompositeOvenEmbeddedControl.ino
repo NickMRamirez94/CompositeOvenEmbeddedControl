@@ -48,6 +48,7 @@ bool lastButton_back = HIGH;
 bool currentButton_back = HIGH;
 
 void setup() {
+  Serial.begin(9600);
   //Init peripherals
   GLCD.Init();
   GLCD.SelectFont(Iain5x7);
@@ -1260,19 +1261,41 @@ void runCycle(){
           ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-          Serial.print("Half second code running\n");
-          p1 = convertToF(part1.readThermocoupleTemperature());
-          p2 = convertToF(part2.readThermocoupleTemperature());
-          a1 = convertToF(air1.readThermocoupleTemperature());
-          a2 = convertToF(air2.readThermocoupleTemperature());
-          partTemp = tempConversion(p1, p2);
-          airTemp = tempConversion(a1, a2);
-
+            
+          p1 = part1.readThermocoupleTemperature();
+          p2 = part2.readThermocoupleTemperature();
+          partTemp = convertToF(tempConversion(p1, p2));
+          a1 = air1.readThermocoupleTemperature();
+          a2 = air2.readThermocoupleTemperature();
+          airTemp = convertToF(tempConversion(a1, a2));
+          // Serial.print("AirTemp: " + String(airTemp) + "\n");
+          // Serial.print("PartTemp: " + String(partTemp) + "\n\n");
+          // Serial.print("a1: " + String(a1) + "\n");
+          // Serial.print("a2: " + String(a2) + "\n");
+          // Serial.print("p1: " + String(p1) + "\n");
+          // Serial.print("p2: " + String(p2) + "\n");          
           
+          
+
+          printTime(17, 0, startTime);
+
+          //Write to SD card
+          dataBuffer[0] = p1 >> 8;
+          dataBuffer[1] = p1 & 255;
+          dataBuffer[2] = p2 >> 8;
+          dataBuffer[3] = p2 & 255;
+          dataBuffer[4] = a1 >> 8;
+          dataBuffer[5] = a1 & 255;
+          dataBuffer[6] = a2 >> 8;
+          dataBuffer[7] = a2 & 255;
+          dataFile.write(dataBuffer, 8);
+
+          }
+          lt = ct;
+
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
           {
-            Serial.print("Full second code running\n");
             if(partTemp >= currentTemp + rate) {  //When part temp goes over target temp or ambient goes over target + delta T   
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
@@ -1302,6 +1325,7 @@ void runCycle(){
               //isOn = true;
             }
           
+            //Serial.println("Dave");
             GLCD.CursorTo(13, 3);
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
@@ -1311,22 +1335,6 @@ void runCycle(){
 
           }
           lt1 = ct1;
-
-          printTime(17, 0, startTime);
-
-          //Write to SD card
-          dataBuffer[0] = p1 >> 8;
-          dataBuffer[1] = p1 & 255;
-          dataBuffer[2] = p2 >> 8;
-          dataBuffer[3] = p2 & 255;
-          dataBuffer[4] = a1 >> 8;
-          dataBuffer[5] = a1 & 255;
-          dataBuffer[6] = a2 >> 8;
-          dataBuffer[7] = a2 & 255;
-          dataFile.write(dataBuffer, 8);
-
-          }
-          lt = ct;
 
           currentButton_back = digitalRead(B_BACK); //read button state
           if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
@@ -1365,7 +1373,7 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: ");
+      GLCD.print("TT: " + String(holdTemp) + "     ");
       GLCD.CursorTo(14, 1);
       GLCD.print("TR: "); 
       logFile.write(readTime(startTime));
@@ -1374,6 +1382,7 @@ void runCycle(){
       logFile.write(String(rate).c_str());
       logFile.write(" minutes\n");
       setpoint = holdTemp;
+      bool flag = true;
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
           ct1 = ((millis() - startTime) / 500) % 2;
@@ -1382,11 +1391,16 @@ void runCycle(){
             //Duty cycle and PID control            
             input = partTemp;
             myPID.Compute();
+            Serial.println("Output: " + String(output));
             adjOutput = (output / 255) * 1000;
+            Serial.println("adjOutput: " + String(adjOutput));
             GLCD.CursorTo(7, 0);
             GLCD.print("On  ");
             GLCD.CursorTo(7, 1);
-            GLCD.print("On  ");             
+            GLCD.print("On  ");
+            Serial.println("partTemp: " + String(partTemp));
+            Serial.println("Turning on relays");
+            flag = true;         
             digitalWrite(0, LOW);
             digitalWrite(1, LOW);
             dutyTime = millis();
@@ -1406,7 +1420,12 @@ void runCycle(){
             GLCD.CursorTo(7, 0);
             GLCD.print("Off  ");
             GLCD.CursorTo(7, 1);
-            GLCD.print("Off  ");            
+            GLCD.print("Off  ");
+            if(flag)
+            {
+              Serial.println("Turning off relays");
+              flag = false;
+            }
             digitalWrite(0, HIGH);
             digitalWrite(1, HIGH);
           }
@@ -1507,6 +1526,35 @@ unsigned long time = millis();
             partTemp = tempConversion(p1, p2);
             airTemp = tempConversion(a1, a2);
 
+          
+
+          printTime(17, 0, startTime);
+          // GLCD.CursorTo(17, 0);
+          // if((millis() - startTime) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          // if(((millis() - startTime) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          // if(((millis() - startTime) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+
+          //Write to SD card
+
+          dataBuffer[0] = p1 >> 8;
+          dataBuffer[1] = p1 & 255;
+          dataBuffer[2] = p2 >> 8;
+          dataBuffer[3] = p2 & 255;
+          dataBuffer[4] = a1 >> 8;
+          dataBuffer[5] = a1 & 255;
+          dataBuffer[6] = a2 >> 8;
+          dataBuffer[7] = a2 & 255;
+          dataFile.write(dataBuffer, 8); 
+        
+          }
+          lt = ct; 
+
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
           {  
@@ -1552,33 +1600,6 @@ unsigned long time = millis();
             GLCD.print(String(currentTemp - rate) + "  ");
           }
           lt1 = ct1;
-
-          printTime(17, 0, startTime);
-          // GLCD.CursorTo(17, 0);
-          // if((millis() - startTime) / 3600000 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          // if(((millis() - startTime) / 60000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          // if(((millis() - startTime) / 1000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
-
-          //Write to SD card
-
-          dataBuffer[0] = p1 >> 8;
-          dataBuffer[1] = p1 & 255;
-          dataBuffer[2] = p2 >> 8;
-          dataBuffer[3] = p2 & 255;
-          dataBuffer[4] = a1 >> 8;
-          dataBuffer[5] = a1 & 255;
-          dataBuffer[6] = a2 >> 8;
-          dataBuffer[7] = a2 & 255;
-          dataFile.write(dataBuffer, 8); 
-        
-          }
-          lt = ct; 
 
 
           currentButton_back = digitalRead(B_BACK); //read button state
