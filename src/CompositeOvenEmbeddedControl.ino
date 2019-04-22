@@ -1381,6 +1381,12 @@ void runCycle(){
       logFile.write("Hold for ");
       logFile.write(String(rate).c_str());
       logFile.write(" minutes\n");
+      //Just want to make sure these start low
+      ct1 = LOW;
+      ct = LOW;
+      //Want to grab the temps before the loop because 1398 would be grabbing garbage before the temp is first grabbed at 1444
+      partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
+      airTemp = tempConversion(convertToF(air1.readThermocoupleTemperature()), convertToF(air2.readThermocoupleTemperature()));
       setpoint = holdTemp;
       bool flag = true;
       while(millis() - time < (unsigned long)(rate * 60000)) {
@@ -1410,8 +1416,9 @@ void runCycle(){
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
-            GLCD.CursorTo(21, 4);
-            GLCD.print(String(currentTemp + rate) + "  ");
+            // This code was overwritting TT
+            // GLCD.CursorTo(21, 4);
+            // GLCD.print(String(currentTemp + rate) + "  ");
           }
           lt1 = ct1;
 
