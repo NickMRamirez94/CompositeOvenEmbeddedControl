@@ -1033,7 +1033,7 @@ void runCycle(){
   String partDisplay;
   uint16_t holdTemp;
   double input = PREHEAT_TEMP, output = 50, setpoint = PREHEAT_TEMP;
-  double kp = 2, ki = 0.5, kd = 2;
+  double kp = 0.12, ki = 0.0, kd = 0.0;
   bool ct = false;
   bool lt = false;
   bool ct1 = false;
