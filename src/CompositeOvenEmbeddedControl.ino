@@ -1034,7 +1034,7 @@ void runCycle(){
   String partDisplay;
   uint16_t holdTemp;
   double input = PREHEAT_TEMP, output = 50, setpoint = PREHEAT_TEMP;
-  double kp = 0.12, ki = 0.0, kd = 0.0;
+  double kp = 8.66, ki = 0.02, kd = 1100.66;
   bool ct = false;
   bool lt = false;
   bool ct1 = false;
@@ -1227,8 +1227,8 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
-      unsigned long dutyTime;
-      unsigned long adjOutput;
+      //unsigned long dutyTime;
+      //unsigned long adjOutput;
       //bool isOn;
       //unsigned long rampStart = millis();      
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
@@ -1392,6 +1392,8 @@ void runCycle(){
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
           ct1 = ((millis() - startTime) / 500) % 2;
+          Serial.println(String(ct1));
+          Serial.println(String(lt1));
           if (lt1 == HIGH && ct1 == LOW) 
           {
             //Duty cycle and PID control            
@@ -1441,12 +1443,12 @@ void runCycle(){
           ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-            p1 = convertToF(part1.readThermocoupleTemperature());
-            p2 = convertToF(part2.readThermocoupleTemperature());
-            a1 = convertToF(air1.readThermocoupleTemperature());
-            a2 = convertToF(air2.readThermocoupleTemperature());
-            partTemp = tempConversion(p1, p2);
-            airTemp = tempConversion(a1, a2);
+            // p1 = part1.readThermocoupleTemperature();
+            // p2 = part2.readThermocoupleTemperature();
+            // a1 = air1.readThermocoupleTemperature();
+            // a2 = air2.readThermocoupleTemperature();
+            // partTemp = convertToF(tempConversion(p1, p2));
+            // airTemp = convertToF(tempConversion(a1, a2));
 
             printTime(17, 0, startTime);
             printTime(17, 1, time, rate);
@@ -1491,8 +1493,8 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
-      unsigned long dutyTime;
-      unsigned long adjOutput;
+      //unsigned long dutyTime;
+      //unsigned long adjOutput;
       //bool isOn;
       //unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
