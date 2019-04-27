@@ -1247,7 +1247,7 @@ void runCycle(){
       logFile.write(" at ");
       logFile.write(String(rate).c_str());
       logFile.write("\n"); 
-      while(partTemp < temp - 20) { //Loop until ramp temp is met
+      while(partTemp < temp - 30) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
         delay(200);
@@ -1262,12 +1262,12 @@ void runCycle(){
           if (lt == HIGH && ct == LOW) 
           {
             
-          p1 = part1.readThermocoupleTemperature();
-          p2 = part2.readThermocoupleTemperature();
-          partTemp = convertToF(tempConversion(p1, p2));
-          a1 = air1.readThermocoupleTemperature();
-          a2 = air2.readThermocoupleTemperature();
-          airTemp = convertToF(tempConversion(a1, a2));
+          p1 = convertToF(part1.readThermocoupleTemperature());
+          p2 = convertToF(part2.readThermocoupleTemperature());
+          partTemp = tempConversion(p1, p2);
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
+          airTemp = tempConversion(a1, a2);
           // Serial.print("AirTemp: " + String(airTemp) + "\n");
           // Serial.print("PartTemp: " + String(partTemp) + "\n\n");
           // Serial.print("a1: " + String(a1) + "\n");
@@ -1388,56 +1388,8 @@ void runCycle(){
       partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
       airTemp = tempConversion(convertToF(air1.readThermocoupleTemperature()), convertToF(air2.readThermocoupleTemperature()));
       setpoint = holdTemp;
-      bool flag = true;
+      //bool flag = true;
       while(millis() - time < (unsigned long)(rate * 60000)) {
-
-          ct1 = ((millis() - startTime) / 500) % 2;
-          Serial.println(String(ct1));
-          Serial.println(String(lt1));
-          if (lt1 == HIGH && ct1 == LOW) 
-          {
-            //Duty cycle and PID control            
-            input = partTemp;
-            myPID.Compute();
-            Serial.println("Output: " + String(output));
-            adjOutput = (output / 255) * 1000;
-            Serial.println("adjOutput: " + String(adjOutput));
-            GLCD.CursorTo(7, 0);
-            GLCD.print("On  ");
-            GLCD.CursorTo(7, 1);
-            GLCD.print("On  ");
-            Serial.println("partTemp: " + String(partTemp));
-            Serial.println("Turning on relays");
-            flag = true;         
-            digitalWrite(0, LOW);
-            digitalWrite(1, LOW);
-            dutyTime = millis();
-
-            //Print temperatures to GLCD
-            GLCD.CursorTo(13, 3);
-            GLCD.print(String(airTemp) + "         ");
-            GLCD.CursorTo(10, 4);
-            GLCD.print(String(partTemp) + "         ");
-            // This code was overwritting TT
-            // GLCD.CursorTo(21, 4);
-            // GLCD.print(String(currentTemp + rate) + "  ");
-          }
-          lt1 = ct1;
-
-          //Duty cycle control
-          if (millis() > dutyTime + adjOutput) {
-            GLCD.CursorTo(7, 0);
-            GLCD.print("Off  ");
-            GLCD.CursorTo(7, 1);
-            GLCD.print("Off  ");
-            if(flag)
-            {
-              Serial.println("Turning off relays");
-              flag = false;
-            }
-            digitalWrite(0, HIGH);
-            digitalWrite(1, HIGH);
-          }
 
           //Grab temp, set relays, write to display every second, write to SD card every quarter second
           ct = ((millis() - startTime) / 250) % 2;
@@ -1465,7 +1417,62 @@ void runCycle(){
             dataFile.write(dataBuffer, 8);
 
           }
-          lt = ct;
+          lt = ct;        
+
+          ct1 = ((millis() - startTime) / 500) % 2;
+          if (lt1 == HIGH && ct1 == LOW) 
+          {
+            p1 = convertToF(part1.readThermocoupleTemperature());
+            p2 = convertToF(part2.readThermocoupleTemperature());
+            a1 = convertToF(air1.readThermocoupleTemperature());
+            a2 = convertToF(air2.readThermocoupleTemperature());
+            partTemp = tempConversion(p1, p2);
+            airTemp = tempConversion(a1, a2);
+            // Duty cycle and PID control            
+            input = partTemp;
+            myPID.Compute();
+            // Serial.println("Output: " + String(output));
+            adjOutput = (output / 255) * 1000;
+            // Serial.println("adjOutput: " + String(adjOutput));
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            // Serial.println("partTemp: " + String(partTemp));
+ 
+            if(output != 0) {         
+              // Serial.println("Turning on relays");
+              digitalWrite(0, LOW);
+              digitalWrite(1, LOW);
+            }
+            dutyTime = millis();
+            // Serial.println("dutyTime" + String(dutyTime));
+
+            //Print temperatures to GLCD
+            GLCD.CursorTo(13, 3);
+            GLCD.print(String(airTemp) + "         ");
+            GLCD.CursorTo(10, 4);
+            GLCD.print(String(partTemp) + "         ");
+            // This code was overwritting TT
+            // GLCD.CursorTo(21, 4);
+            // GLCD.print(String(currentTemp + rate) + "  ");
+          }
+          lt1 = ct1;
+
+          //Duty cycle control
+          if (millis() > dutyTime + adjOutput) {
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off  ");
+            if(output != 255) {
+              // Serial.println("Turning off relays");
+              digitalWrite(0, HIGH);
+              digitalWrite(1, HIGH);
+            }
+          }
+
+
  
           currentButton_back = digitalRead(B_BACK); //read button state
           if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
