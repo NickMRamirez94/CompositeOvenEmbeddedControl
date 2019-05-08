@@ -2,7 +2,8 @@
  #include <SD.h>
  #include <openGLCD.h>
  #include <Adafruit_MAX31856.h>
- #include <Adafruit_MAX31855.h>
+ #include <PID_v1.h>
+ //#include <Adafruit_MAX31855.h>
 
 //Define static variables
 #define B_UP          11
@@ -19,7 +20,7 @@
 #define P_SENSOR      A4
 #define SPEAKER       12
 #define DELTA_T       50
-#define PREHEAT_TEMP  80
+#define PREHEAT_TEMP  120
 
 //Misc global variables
 byte prevMenu = 1;
@@ -47,6 +48,7 @@ bool lastButton_back = HIGH;
 bool currentButton_back = HIGH;
 
 void setup() {
+  Serial.begin(9600);
   //Init peripherals
   GLCD.Init();
   GLCD.SelectFont(Iain5x7);
@@ -76,7 +78,7 @@ void setup() {
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
   GLCD.CursorTo(10, 4);
-  GLCD.print("v  0.4");
+  GLCD.print("v  1.0");
   //Check for SD Card
   if (!SD.begin()) {
     GLCD.CursorTo(0, 7);
@@ -1031,6 +1033,8 @@ void runCycle(){
   String airDisplay;
   String partDisplay;
   uint16_t holdTemp;
+  double input = PREHEAT_TEMP, output = 50, setpoint = PREHEAT_TEMP;
+  double kp = 8.66, ki = 0.02, kd = 1100.66;
   bool ct = false;
   bool lt = false;
   bool ct1 = false;
@@ -1045,12 +1049,18 @@ void runCycle(){
   currentButton_enter = HIGH;
   lastButton_back = HIGH;
   currentButton_back = HIGH;
-  Adafruit_MAX31855 air1(AIR_SENSOR1);
-  Adafruit_MAX31855 air2(AIR_SENSOR2);  
+  PID myPID(&input, &output, &setpoint, kp, ki, kd, DIRECT);
+  myPID.SetMode(AUTOMATIC);
+  Adafruit_MAX31856 air1(AIR_SENSOR1);
+  Adafruit_MAX31856 air2(AIR_SENSOR2);  
   Adafruit_MAX31856 part1(PART_SENSOR1);
   Adafruit_MAX31856 part2(PART_SENSOR2);
   air1.begin();
   air2.begin();
+  part1.begin();
+  part2.begin();
+  air1.setThermocoupleType(MAX31856_TCTYPE_K);
+  air2.setThermocoupleType(MAX31856_TCTYPE_K);
   part1.setThermocoupleType(MAX31856_TCTYPE_K);
   part2.setThermocoupleType(MAX31856_TCTYPE_K);
   File cycle = SD.open(cycleFile, FILE_READ);
@@ -1093,7 +1103,7 @@ void runCycle(){
   GLCD.print("Preheat Temp: " + String(PREHEAT_TEMP));
   GLCD.CursorTo(0, 3);
   GLCD.print("Ambient Temp: ");
-  uint16_t currentTemp = tempConversion(air1.readFarenheit(), air2.readFarenheit());
+  uint16_t currentTemp = convertToF(tempConversion(air1.readThermocoupleTemperature(), air2.readThermocoupleTemperature()));
   delay(200);
   if(currentTemp < PREHEAT_TEMP) {
     unsigned long startTime = millis();
@@ -1105,8 +1115,8 @@ void runCycle(){
           if (lt == HIGH && ct == LOW) 
           {
 
-          a1 = air1.readFarenheit();
-          a2 = air2.readFarenheit();
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
           currentTemp = tempConversion(a1, a2);
         
           GLCD.CursorTo(12, 3);
@@ -1150,8 +1160,8 @@ void runCycle(){
           if (lt == HIGH && ct == LOW) 
           {
 
-          a1 = air1.readFarenheit();
-          a2 = air2.readFarenheit();
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
           currentTemp = tempConversion(a1, a2);
         
           GLCD.CursorTo(12, 3);
@@ -1217,6 +1227,8 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
+      //unsigned long dutyTime;
+      //unsigned long adjOutput;
       //bool isOn;
       //unsigned long rampStart = millis();      
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
@@ -1235,7 +1247,7 @@ void runCycle(){
       logFile.write(" at ");
       logFile.write(String(rate).c_str());
       logFile.write("\n"); 
-      while(partTemp < temp) { //Loop until ramp temp is met
+      while(partTemp < temp - 30) { //Loop until ramp temp is met
         unsigned long time = millis();
         currentTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
         delay(200);
@@ -1245,24 +1257,46 @@ void runCycle(){
         logFile.write("\n");
         while(millis() < time + 60000) { //Run this loop for 60 seconds
 
-          //Grab temp, set relays, write to display every second, write to SD card every quarter second
+          //Grab temp, set relays, write to display every second, write to SD card every half second
           ct = ((millis() - startTime) / 250) % 2;
           if (lt == HIGH && ct == LOW) 
           {
-
+            
           p1 = convertToF(part1.readThermocoupleTemperature());
           p2 = convertToF(part2.readThermocoupleTemperature());
-          a1 = air1.readFarenheit();
-          a2 = air2.readFarenheit();
           partTemp = tempConversion(p1, p2);
+          a1 = convertToF(air1.readThermocoupleTemperature());
+          a2 = convertToF(air2.readThermocoupleTemperature());
           airTemp = tempConversion(a1, a2);
-
+          // Serial.print("AirTemp: " + String(airTemp) + "\n");
+          // Serial.print("PartTemp: " + String(partTemp) + "\n\n");
+          // Serial.print("a1: " + String(a1) + "\n");
+          // Serial.print("a2: " + String(a2) + "\n");
+          // Serial.print("p1: " + String(p1) + "\n");
+          // Serial.print("p2: " + String(p2) + "\n");          
           
+          
+
+          printTime(17, 0, startTime);
+
+          //Write to SD card
+          dataBuffer[0] = p1 >> 8;
+          dataBuffer[1] = p1 & 255;
+          dataBuffer[2] = p2 >> 8;
+          dataBuffer[3] = p2 & 255;
+          dataBuffer[4] = a1 >> 8;
+          dataBuffer[5] = a1 & 255;
+          dataBuffer[6] = a2 >> 8;
+          dataBuffer[7] = a2 & 255;
+          dataFile.write(dataBuffer, 8);
+
+          }
+          lt = ct;
+
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
           {
-            if((partTemp >= currentTemp + rate) ||
-              (airTemp >= currentTemp + rate + DELTA_T)) {  //When part temp goes over target temp or ambient goes over target + delta T   
+            if(partTemp >= currentTemp + rate) {  //When part temp goes over target temp or ambient goes over target + delta T   
               digitalWrite(RELAY1, HIGH);
               GLCD.CursorTo(7, 0);
               GLCD.print("Off");
@@ -1270,13 +1304,10 @@ void runCycle(){
               GLCD.CursorTo(7, 1);
               GLCD.print("Off");
               //isOn = false;
-            } else if(((partTemp < currentTemp + rate) && 
+            } else if((partTemp < currentTemp + rate) && 
                       (partTemp >= currentTemp + rate - 2) 
                       //&& isOn == false
-                      ) || ((airTemp < currentTemp + rate + DELTA_T) && 
-                      (airTemp >= currentTemp + rate + DELTA_T - 2)
-                      //&&isOn == false)
-                      )){  //This code prevents rapid on and off. If oven is off, then if must go 2 degrees below target to turn back on (part or ambient)
+                      ) {  //This code prevents rapid on and off. If oven is off, then if must go 2 degrees below target to turn back on (part or ambient)
               digitalWrite(RELAY1, LOW);
               GLCD.CursorTo(7, 0);
               GLCD.print("On");
@@ -1294,6 +1325,7 @@ void runCycle(){
               //isOn = true;
             }
           
+            //Serial.println("Dave");
             GLCD.CursorTo(13, 3);
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
@@ -1303,32 +1335,6 @@ void runCycle(){
 
           }
           lt1 = ct1;
-
-          printTime(17, 0, startTime);
-          // GLCD.CursorTo(17, 0);          
-          // if((millis() - startTime) / 3600000 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          // if(((millis() - startTime) / 60000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          // if(((millis() - startTime) / 1000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
-
-          //Write to SD card
-          dataBuffer[0] = p1 >> 8;
-          dataBuffer[1] = p1 & 255;
-          dataBuffer[2] = p2 >> 8;
-          dataBuffer[3] = p2 & 255;
-          dataBuffer[4] = a1 >> 8;
-          dataBuffer[5] = a1 & 255;
-          dataBuffer[6] = a2 >> 8;
-          dataBuffer[7] = a2 & 255;
-          dataFile.write(dataBuffer, 8);
-
-          }
-          lt = ct;
 
           currentButton_back = digitalRead(B_BACK); //read button state
           if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
@@ -1360,112 +1366,114 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
+      unsigned long dutyTime;
+      unsigned long adjOutput;
       //bool isOn;
       unsigned long time = millis();
       GLCD.CursorTo(0, 7);
       GLCD.print("Hold for " + String(rate) + " minutes    ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: ");
+      GLCD.print("TT: " + String(holdTemp) + "     ");
       GLCD.CursorTo(14, 1);
       GLCD.print("TR: "); 
       logFile.write(readTime(startTime));
       logFile.write(" -- Start of Hold Cycle: ");
       logFile.write("Hold for ");
       logFile.write(String(rate).c_str());
-      logFile.write(" minnutes\n");
+      logFile.write(" minutes\n");
+      //Just want to make sure these start low
+      ct1 = LOW;
+      ct = LOW;
+      //Want to grab the temps before the loop because 1398 would be grabbing garbage before the temp is first grabbed at 1444
+      partTemp = tempConversion(convertToF(part1.readThermocoupleTemperature()), convertToF(part2.readThermocoupleTemperature()));
+      airTemp = tempConversion(convertToF(air1.readThermocoupleTemperature()), convertToF(air2.readThermocoupleTemperature()));
+      setpoint = holdTemp;
+      //bool flag = true;
       while(millis() - time < (unsigned long)(rate * 60000)) {
 
-        ct = ((millis() - startTime) / 250) % 2;
-        if (lt == HIGH && ct == LOW) 
-        {
+          //Grab temp, set relays, write to display every second, write to SD card every quarter second
+          ct = ((millis() - startTime) / 250) % 2;
+          if (lt == HIGH && ct == LOW) 
+          {
+            // p1 = part1.readThermocoupleTemperature();
+            // p2 = part2.readThermocoupleTemperature();
+            // a1 = air1.readThermocoupleTemperature();
+            // a2 = air2.readThermocoupleTemperature();
+            // partTemp = convertToF(tempConversion(p1, p2));
+            // airTemp = convertToF(tempConversion(a1, a2));
 
-        p1 = convertToF(part1.readThermocoupleTemperature());
-        p2 = convertToF(part2.readThermocoupleTemperature());
-        a1 = air1.readFarenheit();
-        a2 = air2.readFarenheit();
-        partTemp = tempConversion(p1, p2);
-        airTemp = tempConversion(a1, a2);
+            printTime(17, 0, startTime);
+            printTime(17, 1, time, rate);
 
-        ct1 = ((millis() - startTime) / 500) % 2;
-        if (lt1 == HIGH && ct1 == LOW) 
-        {
-          if(partTemp >= holdTemp) {
-              digitalWrite(RELAY1, HIGH);
-              GLCD.CursorTo(7, 0);
-              GLCD.print("Off");
-              digitalWrite(RELAY2, HIGH);
-              GLCD.CursorTo(7, 1);
-              GLCD.print("Off");
-              //isOn = false;
-            } else if((partTemp < holdTemp + rate) && 
-                      (partTemp >= holdTemp - 2)
-                      // && isOn == false
-                      ){
-              digitalWrite(RELAY1, LOW);
-              GLCD.CursorTo(7, 0);
-              GLCD.print("On");
-              digitalWrite(RELAY2, HIGH);
-              GLCD.CursorTo(7, 1);
-              GLCD.print("Off");
-              //isOn = false;
-            } else {            
-              digitalWrite(RELAY1, LOW);
-              GLCD.CursorTo(7, 0);
-              GLCD.print("On  ");
-              digitalWrite(RELAY2, LOW);
-              GLCD.CursorTo(7, 1);
-              GLCD.print("On  ");
-              //isOn = true;
+            //Write to SD card
+            dataBuffer[0] = p1 >> 8;
+            dataBuffer[1] = p1 & 255;
+            dataBuffer[2] = p2 >> 8;
+            dataBuffer[3] = p2 & 255;
+            dataBuffer[4] = a1 >> 8;
+            dataBuffer[5] = a1 & 255;
+            dataBuffer[6] = a2 >> 8;
+            dataBuffer[7] = a2 & 255;
+            dataFile.write(dataBuffer, 8);
+
+          }
+          lt = ct;        
+
+          ct1 = ((millis() - startTime) / 500) % 2;
+          if (lt1 == HIGH && ct1 == LOW) 
+          {
+            p1 = convertToF(part1.readThermocoupleTemperature());
+            p2 = convertToF(part2.readThermocoupleTemperature());
+            a1 = convertToF(air1.readThermocoupleTemperature());
+            a2 = convertToF(air2.readThermocoupleTemperature());
+            partTemp = tempConversion(p1, p2);
+            airTemp = tempConversion(a1, a2);
+            // Duty cycle and PID control            
+            input = partTemp;
+            myPID.Compute();
+            // Serial.println("Output: " + String(output));
+            adjOutput = (output / 255) * 1000;
+            // Serial.println("adjOutput: " + String(adjOutput));
+            GLCD.CursorTo(7, 0);
+            GLCD.print("On  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("On  ");
+            // Serial.println("partTemp: " + String(partTemp));
+ 
+            if(output != 0) {         
+              // Serial.println("Turning on relays");
+              digitalWrite(0, LOW);
+              digitalWrite(1, LOW);
             }
+            dutyTime = millis();
+            // Serial.println("dutyTime" + String(dutyTime));
 
+            //Print temperatures to GLCD
             GLCD.CursorTo(13, 3);
             GLCD.print(String(airTemp) + "         ");
             GLCD.CursorTo(10, 4);
             GLCD.print(String(partTemp) + "         ");
-            GLCD.CursorTo(21, 4);
-            GLCD.print(String(holdTemp) + "  ");
+            // This code was overwritting TT
+            // GLCD.CursorTo(21, 4);
+            // GLCD.print(String(currentTemp + rate) + "  ");
           }
           lt1 = ct1;
-          
-          printTime(17, 0, startTime);
-          // GLCD.CursorTo(17, 0);
-          // if((millis() - startTime) / 3600000 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          // if(((millis() - startTime) / 60000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          // if(((millis() - startTime) / 1000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
 
-          printTime(17, 1, time, rate);
-          // GLCD.CursorTo(17, 1);
-          // if((((unsigned long)(rate * 60000) + time) - millis()) / 3600000 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String((((unsigned long)(rate * 60000) + time) - millis()) / 3600000) + ":");
-          // if(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 60000) % 60) + ":");
-          // if(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((((unsigned long)(rate * 60000) + time) - millis()) / 1000) % 60) + "   ");           
-
-          //Write to SD card
-
-          dataBuffer[0] = p1 >> 8;
-          dataBuffer[1] = p1 & 255;
-          dataBuffer[2] = p2 >> 8;
-          dataBuffer[3] = p2 & 255;
-          dataBuffer[4] = a1 >> 8;
-          dataBuffer[5] = a1 & 255;
-          dataBuffer[6] = a2 >> 8;
-          dataBuffer[7] = a2 & 255;
-          dataFile.write(dataBuffer, 8); 
-        
+          //Duty cycle control
+          if (millis() > dutyTime + adjOutput) {
+            GLCD.CursorTo(7, 0);
+            GLCD.print("Off  ");
+            GLCD.CursorTo(7, 1);
+            GLCD.print("Off  ");
+            if(output != 255) {
+              // Serial.println("Turning off relays");
+              digitalWrite(0, HIGH);
+              digitalWrite(1, HIGH);
+            }
           }
-          lt = ct;
 
+
+ 
           currentButton_back = digitalRead(B_BACK); //read button state
           if (lastButton_back == LOW && currentButton_back == HIGH) //if it was pressed…
           {
@@ -1492,6 +1500,8 @@ void runCycle(){
       uint16_t partTemp;
       uint16_t airTemp;
       uint16_t p1, p2, a1, a2;
+      //unsigned long dutyTime;
+      //unsigned long adjOutput;
       //bool isOn;
       //unsigned long derampStart = millis();
       holdTemp = temp; //If next instruction is a hold, this records the temp from previous ramp
@@ -1500,9 +1510,9 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: ");
+      GLCD.print("TT:       ");
       GLCD.CursorTo(14, 1);
-      GLCD.print("            ");      
+      GLCD.print("                  ");      
       logFile.write(readTime(startTime));
       logFile.write(" -- Start of Deramp Cycle: ");
       logFile.write("Deramp to ");
@@ -1512,7 +1522,7 @@ void runCycle(){
       logFile.write("\n"); 
 
       while(partTemp > temp) { //Loop until ramp temp is met
-        unsigned long time = millis();
+unsigned long time = millis();
         currentTemp = convertToF(tempConversion(part1.readThermocoupleTemperature(), part2.readThermocoupleTemperature()));
         delay(200);
         logFile.write(readTime(startTime));
@@ -1527,10 +1537,39 @@ void runCycle(){
 
             p1 = convertToF(part1.readThermocoupleTemperature());
             p2 = convertToF(part2.readThermocoupleTemperature());
-            a1 = air1.readFarenheit();
-            a2 = air2.readFarenheit();
+            a1 = convertToF(air1.readThermocoupleTemperature());
+            a2 = convertToF(air2.readThermocoupleTemperature());
             partTemp = tempConversion(p1, p2);
             airTemp = tempConversion(a1, a2);
+
+          
+
+          printTime(17, 0, startTime);
+          // GLCD.CursorTo(17, 0);
+          // if((millis() - startTime) / 3600000 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
+          // if(((millis() - startTime) / 60000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
+          // if(((millis() - startTime) / 1000) % 60 < 10)
+          //   GLCD.print("0");
+          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
+
+          //Write to SD card
+
+          dataBuffer[0] = p1 >> 8;
+          dataBuffer[1] = p1 & 255;
+          dataBuffer[2] = p2 >> 8;
+          dataBuffer[3] = p2 & 255;
+          dataBuffer[4] = a1 >> 8;
+          dataBuffer[5] = a1 & 255;
+          dataBuffer[6] = a2 >> 8;
+          dataBuffer[7] = a2 & 255;
+          dataFile.write(dataBuffer, 8); 
+        
+          }
+          lt = ct; 
 
           ct1 = ((millis() - startTime) / 500) % 2;
           if (lt1 == HIGH && ct1 == LOW) 
@@ -1577,33 +1616,6 @@ void runCycle(){
             GLCD.print(String(currentTemp - rate) + "  ");
           }
           lt1 = ct1;
-
-          printTime(17, 0, startTime);
-          // GLCD.CursorTo(17, 0);
-          // if((millis() - startTime) / 3600000 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String((millis() - startTime) / 3600000) + ":");
-          // if(((millis() - startTime) / 60000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 60000) % 60) + ":");
-          // if(((millis() - startTime) / 1000) % 60 < 10)
-          //   GLCD.print("0");
-          // GLCD.print(String(((millis() - startTime) / 1000) % 60) + "   ");
-
-          //Write to SD card
-
-          dataBuffer[0] = p1 >> 8;
-          dataBuffer[1] = p1 & 255;
-          dataBuffer[2] = p2 >> 8;
-          dataBuffer[3] = p2 & 255;
-          dataBuffer[4] = a1 >> 8;
-          dataBuffer[5] = a1 & 255;
-          dataBuffer[6] = a2 >> 8;
-          dataBuffer[7] = a2 & 255;
-          dataFile.write(dataBuffer, 8); 
-        
-          }
-          lt = ct; 
 
 
           currentButton_back = digitalRead(B_BACK); //read button state
