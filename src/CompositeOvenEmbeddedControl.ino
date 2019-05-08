@@ -78,7 +78,7 @@ void setup() {
   GLCD.CursorTo(7, 3);
   GLCD.print("Oven M.I.T.T.");
   GLCD.CursorTo(10, 4);
-  GLCD.print("v  0.6");
+  GLCD.print("v  1.0");
   //Check for SD Card
   if (!SD.begin()) {
     GLCD.CursorTo(0, 7);
@@ -1510,9 +1510,9 @@ void runCycle(){
       GLCD.CursorTo(0, 7);
       GLCD.print("Deramp to " + String(temp) + " at " + String(rate) + "          ");
       GLCD.CursorTo(18, 4);
-      GLCD.print("TT: ");
+      GLCD.print("TT:       ");
       GLCD.CursorTo(14, 1);
-      GLCD.print("            ");      
+      GLCD.print("                  ");      
       logFile.write(readTime(startTime));
       logFile.write(" -- Start of Deramp Cycle: ");
       logFile.write("Deramp to ");
